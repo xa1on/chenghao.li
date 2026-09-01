@@ -816,17 +816,21 @@ export class Shell {
       await this.onConnect(this);
     }
     this.promptPrefix.innerHTML = `<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">~</span>#`;
+    this.loginState = 'LOGGED_IN';
+    audio.fadeHumQuiet();
 
     await new Promise(resolve => setTimeout(resolve, 600));
 
-    const lsText = 'ls<d:500> # click items to navigate<d:250>, or use cat/cd<d:100> (check out info!)';
-    await this.typeCommand(lsText);
+    const lsMainText = 'ls<d:200> # click items to navigate<d:100>, or use cat/cd<d:75> (check out info!)';
+    await this.typeCommand(lsMainText);
+    await this.handleInputSubmit('ls # click items to navigate, or use cat/cd (check out info!)');
 
     await new Promise(resolve => setTimeout(resolve, 400));
-    this.inputDisplay.textContent = '';
-    this.loginState = 'LOGGED_IN';
+
+    const lsInfoText = '<d:100>ls<d:200> info';
+    await this.typeCommand(lsInfoText);
+    await this.handleInputSubmit('ls info');
+
     this.input.disabled = false;
-    audio.fadeHumQuiet();
-    await this.handleInputSubmit('ls # click items to navigate, or use cat/cd (check out info!)');
   }
 }
