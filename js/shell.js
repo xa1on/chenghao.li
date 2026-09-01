@@ -832,7 +832,7 @@ export class Shell {
 
     await new Promise(resolve => setTimeout(resolve, 400));
 
-    await this.typeAndSubmit('<d:100>ls<d:200> info');
+    await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
 
     this.input.disabled = false;
   }
