@@ -1,6 +1,6 @@
-import { FileSystem } from './fs.js';
-import { Shell } from './shell.js';
-import { commands } from './commands/index.js';
+import { FileSystem } from './fs.js?v=c0bbaf7a9d';
+import { Shell } from './shell.js?v=7a1fa5b565';
+import { commands } from './commands/index.js?v=64d77229fd';
 
 // Instantiate FileSystem and Shell contexts
 const fileSystem = new FileSystem();

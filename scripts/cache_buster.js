@@ -92,8 +92,19 @@ function buildVfsTree(dir, fileHashes = {}) {
 
     if (entry.isDirectory()) {
       tree[name] = buildVfsTree(fullPath, fileHashes);
+    } else if (entry.isSymbolicLink()) {
+      try {
+        const target = fs.readlinkSync(fullPath).replace(/\\/g, '/');
+        tree[name] = { symlink: target };
+      } catch (e) {
+        // Fallback if readlink fails
+      }
     } else if (entry.isFile()) {
-      if (CYCLIC_PATHS.has(relPath)) {
+      if (name.endsWith('.symlink')) {
+        const linkName = name.slice(0, -8);
+        const target = fs.readFileSync(fullPath, 'utf8').trim();
+        tree[linkName] = { symlink: target };
+      } else if (CYCLIC_PATHS.has(relPath)) {
         tree[name] = "core";
       } else if (fileHashes[relPath] !== undefined) {
         tree[name] = fileHashes[relPath];

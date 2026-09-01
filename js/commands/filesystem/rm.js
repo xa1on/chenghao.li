@@ -26,7 +26,7 @@ export const rm = {
     }
 
     for (const pathArg of paths) {
-      const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg);
+      const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg, false);
 
       if (resolved === null) {
         if (!force) {
@@ -35,8 +35,10 @@ export const rm = {
         continue;
       }
 
-      const node = shell.fileSystem.getNodeByPath(resolved);
-      if (node && typeof node === 'object') {
+      const node = shell.fileSystem.getNodeByPath(resolved, false);
+      const isLink = node !== null && typeof node === 'object' && typeof node.symlink === 'string';
+
+      if (node && typeof node === 'object' && !isLink) {
         if (!recursive) {
           shell.print(`rm: cannot remove '${pathArg}': Is a directory`, 'color-error');
           continue;

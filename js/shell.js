@@ -1,5 +1,5 @@
-import { audio } from './audio.js';
-import { parseMarkdown, escapeHTML } from './utils/markdown.js';
+import { audio } from './audio.js?v=38beffc128';
+import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=828101034e';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;
@@ -346,6 +346,8 @@ export class Shell {
               await this.handleInputSubmit('ls');
             } else if (type === 'file') {
               await this.handleInputSubmit(`cat ${relativePath}`);
+            } else if (type === 'broken') {
+              this.print(`ls: cannot access '${relativePath}': No such file or directory`, 'color-error');
             }
           }
         } else if (target.classList.contains('cmd-link')) {
@@ -706,7 +708,14 @@ export class Shell {
       const targetDir = this.fileSystem.getNodeByPath(targetPath);
       if (!targetDir || typeof targetDir !== 'object') return;
 
-      const dirKeys = Object.keys(targetDir);
+      const rawDirKeys = Object.keys(targetDir);
+      const dirKeys = rawDirKeys.filter(k => {
+        if (k.endsWith('.symlink')) {
+          const base = k.slice(0, -8);
+          if (rawDirKeys.includes(base)) return false;
+        }
+        return true;
+      });
       if (targetPath.length > 0) {
         dirKeys.push('..');
       }
@@ -716,7 +725,13 @@ export class Shell {
 
       if (matches.length === 1) {
         const matchedName = matches[0];
-        const isDirNode = matchedName === '..' || typeof targetDir[matchedName] === 'object';
+        const itemNode = targetDir[matchedName];
+        const isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
+        let isDirNode = matchedName === '..' || typeof targetDir[matchedName] === 'object';
+        if (isLink) {
+          const resolved = this.fileSystem.resolvePath(targetPath, itemNode.symlink);
+          isDirNode = resolved !== null && typeof this.fileSystem.getNodeByPath(resolved) === 'object';
+        }
         const completedArg = (slashIdx !== -1 ? argVal.slice(0, slashIdx + 1) : '') + matchedName + (isDirNode ? '/' : ' ');
 
         parts[parts.length - 1] = completedArg;
@@ -731,6 +746,13 @@ export class Shell {
           this.updateInputDisplay(this.input.value);
         } else {
           const formattedMatches = matches.map(matchedName => {
+            const itemNode = targetDir[matchedName];
+            const isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
+            if (isLink) {
+              const resolved = this.fileSystem.resolvePath(targetPath, itemNode.symlink);
+              const isDir = resolved !== null && typeof this.fileSystem.getNodeByPath(resolved) === 'object';
+              return `<span class="cyan">${matchedName}@</span>`;
+            }
             const isDirNode = matchedName === '..' || typeof targetDir[matchedName] === 'object';
             return isDirNode ? `<span class="color-dir">${matchedName}/</span>` : `<span class="color-file">${matchedName}</span>`;
           });

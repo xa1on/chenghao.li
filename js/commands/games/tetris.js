@@ -1,4 +1,4 @@
-import { audio } from '../../audio.js';
+import { audio } from '../../audio.js?v=38beffc128';
 
 export const tetris = {
   name: 'tetris',

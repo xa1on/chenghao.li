@@ -1,12 +1,10 @@
-import { virtualFS } from './fs_manifest.js';
+import { virtualFS } from './fs_manifest.js?v=97acf6d6db';
 export { virtualFS };
-
-
 
 function deepMerge(target, source) {
   for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key] === 'object') {
-      if (!target[key] || typeof target[key] !== 'object') {
+    if (source[key] && typeof source[key] === 'object' && !isSymlink(source[key])) {
+      if (!target[key] || typeof target[key] !== 'object' || isSymlink(target[key])) {
         target[key] = {};
       }
       deepMerge(target[key], source[key]);
@@ -18,13 +16,31 @@ function deepMerge(target, source) {
 }
 
 /**
+ * Checks if a virtual node is a symlink
+ */
+export function isSymlink(node) {
+  return node !== null && typeof node === 'object' && typeof node.symlink === 'string';
+}
+
+/**
  * Resolves path array to corresponding nested object or file contents in virtualFS
  */
-export function getNodeByPath(vfs, pathArr) {
+export function getNodeByPath(vfs, pathArr, followSymlinks = true, depth = 0) {
+  if (depth > 20) return null;
   let node = vfs;
-  for (const part of pathArr) {
-    if (node && typeof node === 'object' && node[part] !== undefined) {
+  for (let i = 0; i < pathArr.length; i++) {
+    const part = pathArr[i];
+    if (node && typeof node === 'object' && Object.hasOwn(node, part)) {
       node = node[part];
+      if (isSymlink(node)) {
+        if (i < pathArr.length - 1 || followSymlinks) {
+          const parentPath = pathArr.slice(0, i);
+          const resolvedTarget = resolvePath(vfs, parentPath, node.symlink, true, depth + 1);
+          if (resolvedTarget === null) return null;
+          const remaining = pathArr.slice(i + 1);
+          return getNodeByPath(vfs, [...resolvedTarget, ...remaining], followSymlinks, depth + 1);
+        }
+      }
     } else {
       return null;
     }
@@ -35,7 +51,8 @@ export function getNodeByPath(vfs, pathArr) {
 /**
  * Helper to resolve absolute or relative path strings based on current directory
  */
-export function resolvePath(vfs, currentPath, pathStr) {
+export function resolvePath(vfs, currentPath, pathStr, followFinalSymlink = true, depth = 0) {
+  if (depth > 20) return null;
   let target = [...currentPath];
 
   if (pathStr.startsWith('/')) {
@@ -45,20 +62,46 @@ export function resolvePath(vfs, currentPath, pathStr) {
 
   const segments = pathStr.split('/').filter(s => s.length > 0 && s !== '.');
 
-  for (const seg of segments) {
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
     if (seg === '..') {
       if (target.length > 0) {
         target.pop();
       }
     } else {
-      target.push(seg);
+      let directTarget = [...target, seg];
+      let directNode = getNodeByPath(vfs, directTarget, false);
+
+      if (directNode === null && !seg.endsWith('.symlink')) {
+        const symlinkTarget = [...target, seg + '.symlink'];
+        const symlinkNode = getNodeByPath(vfs, symlinkTarget, false);
+        if (symlinkNode !== null) {
+          directTarget = symlinkTarget;
+          directNode = symlinkNode;
+        }
+      }
+
+      if (directNode === null) {
+        return null;
+      }
+
+      if (isSymlink(directNode)) {
+        const isLast = (i === segments.length - 1);
+        if (!isLast || followFinalSymlink) {
+          const parentPath = target;
+          const resolvedTarget = resolvePath(vfs, parentPath, directNode.symlink, true, depth + 1);
+          if (resolvedTarget === null) {
+            return null;
+          }
+          target = resolvedTarget;
+          continue;
+        }
+      }
+
+      target = directTarget;
     }
   }
 
-  // Verify path actually exists in VFS
-  if (getNodeByPath(vfs, target) === null) {
-    return null;
-  }
   return target;
 }
 
@@ -104,7 +147,7 @@ export class FileSystem {
   }
 
   isBuiltInPath(pathArr) {
-    return getNodeByPath(virtualFS, pathArr) !== null;
+    return getNodeByPath(virtualFS, pathArr, false) !== null;
   }
 
   async readFile(pathArr) {
@@ -120,6 +163,9 @@ export class FileSystem {
       const node = this.getNodeByPath(pathArr);
       if (node === null) {
         throw new Error('No such file or directory');
+      }
+      if (isSymlink(node)) {
+        return node.symlink;
       }
       if (typeof node === 'object') {
         throw new Error('Is a directory');
@@ -139,15 +185,67 @@ export class FileSystem {
     const parentPath = pathArr.slice(0, -1);
     const fileName = pathArr[pathArr.length - 1];
 
-    const rootParent = this.getNodeByPath(parentPath);
-    if (!rootParent || typeof rootParent !== 'object') {
+    const rootParent = this.getNodeByPath(parentPath, false);
+    if (!rootParent || typeof rootParent !== 'object' || isSymlink(rootParent)) {
       throw new Error('Parent directory does not exist');
     }
 
-    // Update in-memory root tree
-    rootParent[fileName] = content;
+    // Check if creating/updating a .symlink file
+    if (fileName.endsWith('.symlink')) {
+      const linkName = fileName.slice(0, -8);
+      const symlinkObj = { symlink: content.trim() };
+      rootParent[linkName] = symlinkObj;
+      rootParent[fileName] = content;
 
-    // Update userTree
+      let userParent = this.userTree;
+      for (const part of parentPath) {
+        if (!userParent[part] || typeof userParent[part] !== 'object') {
+          userParent[part] = {};
+        }
+        userParent = userParent[part];
+      }
+      userParent[linkName] = symlinkObj;
+      userParent[fileName] = content;
+    } else {
+      // Standard file update
+      rootParent[fileName] = content;
+
+      let userParent = this.userTree;
+      for (const part of parentPath) {
+        if (!userParent[part] || typeof userParent[part] !== 'object') {
+          userParent[part] = {};
+        }
+        userParent = userParent[part];
+      }
+      userParent[fileName] = content;
+    }
+
+    this.saveUserFS();
+  }
+
+  createSymlink(pathArr, targetStr) {
+    if (pathArr.length === 0) {
+      throw new Error('Invalid path');
+    }
+    if (this.isBuiltInPath(pathArr)) {
+      throw new Error('Permission denied: cannot overwrite system paths');
+    }
+
+    const parentPath = pathArr.slice(0, -1);
+    const linkName = pathArr[pathArr.length - 1];
+
+    const rootParent = this.getNodeByPath(parentPath, false);
+    if (!rootParent || typeof rootParent !== 'object' || isSymlink(rootParent)) {
+      throw new Error('Parent directory does not exist');
+    }
+    if (rootParent[linkName] !== undefined) {
+      throw new Error('File or directory already exists');
+    }
+
+    const symlinkObj = { symlink: targetStr };
+    rootParent[linkName] = symlinkObj;
+    rootParent[linkName + '.symlink'] = targetStr;
+
     let userParent = this.userTree;
     for (const part of parentPath) {
       if (!userParent[part] || typeof userParent[part] !== 'object') {
@@ -155,7 +253,8 @@ export class FileSystem {
       }
       userParent = userParent[part];
     }
-    userParent[fileName] = content;
+    userParent[linkName] = symlinkObj;
+    userParent[linkName + '.symlink'] = targetStr;
 
     this.saveUserFS();
   }
@@ -171,12 +270,12 @@ export class FileSystem {
     const parentPath = pathArr.slice(0, -1);
     const dirName = pathArr[pathArr.length - 1];
 
-    const rootParent = this.getNodeByPath(parentPath);
-    if (!rootParent || typeof rootParent !== 'object') {
+    const rootParent = this.getNodeByPath(parentPath, false);
+    if (!rootParent || typeof rootParent !== 'object' || isSymlink(rootParent)) {
       throw new Error('Parent directory does not exist');
     }
     if (rootParent[dirName] !== undefined) {
-      if (typeof rootParent[dirName] === 'object') {
+      if (typeof rootParent[dirName] === 'object' && !isSymlink(rootParent[dirName])) {
         throw new Error('Directory already exists');
       } else {
         throw new Error('A file with that name already exists');
@@ -207,10 +306,13 @@ export class FileSystem {
       throw new Error('Permission denied: system paths are read-only');
     }
 
+    const parentPath = pathArr.slice(0, -1);
+    const name = pathArr[pathArr.length - 1];
+
     // Check recursive nested system files
     const isNestedSystemFile = (node, currentPathArr) => {
       if (!node) return false;
-      if (typeof node !== 'object') {
+      if (isSymlink(node) || typeof node !== 'object') {
         return this.isBuiltInPath(currentPathArr);
       }
       for (const key of Object.keys(node)) {
@@ -221,18 +323,20 @@ export class FileSystem {
       return false;
     };
 
-    const targetNode = this.getNodeByPath(pathArr);
+    const targetNode = this.getNodeByPath(pathArr, false);
     if (isNestedSystemFile(targetNode, pathArr)) {
       throw new Error('Permission denied: cannot delete directory containing system files');
     }
 
-    const parentPath = pathArr.slice(0, -1);
-    const name = pathArr[pathArr.length - 1];
-
     // Delete from root
-    const rootParent = this.getNodeByPath(parentPath);
+    const rootParent = this.getNodeByPath(parentPath, false);
     if (rootParent && typeof rootParent === 'object') {
       delete rootParent[name];
+      if (name.endsWith('.symlink')) {
+        delete rootParent[name.slice(0, -8)];
+      } else {
+        delete rootParent[name + '.symlink'];
+      }
     }
 
     // Delete from userTree
@@ -248,6 +352,11 @@ export class FileSystem {
     }
     if (found && userParent && typeof userParent === 'object') {
       delete userParent[name];
+      if (name.endsWith('.symlink')) {
+        delete userParent[name.slice(0, -8)];
+      } else {
+        delete userParent[name + '.symlink'];
+      }
     }
 
     this.saveUserFS();
@@ -290,11 +399,11 @@ export class FileSystem {
     return { resolvedParent, name };
   }
 
-  resolvePath(currentPath, pathStr) {
-    return resolvePath(this.root, currentPath, pathStr);
+  resolvePath(currentPath, pathStr, followFinalSymlink = true) {
+    return resolvePath(this.root, currentPath, pathStr, followFinalSymlink);
   }
-  getNodeByPath(pathArr) {
-    return getNodeByPath(this.root, pathArr);
+  getNodeByPath(pathArr, followSymlinks = true) {
+    return getNodeByPath(this.root, pathArr, followSymlinks);
   }
   getRelativePath(fromPath, toPath) {
     return getRelativePath(fromPath, toPath);

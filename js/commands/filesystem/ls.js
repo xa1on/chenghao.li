@@ -25,11 +25,33 @@ export const ls = {
       const fileName = targetPath[targetPath.length - 1];
       shell.print(`<span class="color-file ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
     } else {
-      const items = Object.keys(targetNode);
+      const rawItems = Object.keys(targetNode);
+      // Filter out duplicate *.symlink files if their base alias exists in targetNode
+      const items = rawItems.filter(name => {
+        if (name.endsWith('.symlink')) {
+          const base = name.slice(0, -8);
+          if (rawItems.includes(base)) return false;
+        }
+        return true;
+      });
+
       const targetPathStr = targetPath.join('/');
       const formattedItems = items.map(name => {
-        const isDir = typeof targetNode[name] === 'object';
+        const itemNode = targetNode[name];
+        const isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
         const absolutePath = '/' + (targetPathStr ? targetPathStr + '/' : '') + name;
+
+        if (isLink) {
+          const resolvedTarget = shell.fileSystem.resolvePath(targetPath, itemNode.symlink);
+          if (resolvedTarget === null) {
+            return `<span class="red ls-item" data-type="broken" data-path="${absolutePath}">${name}@</span>`;
+          }
+          const targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
+          const isDir = typeof targetObj === 'object';
+          return `<span class="cyan ls-item" data-type="${isDir ? 'dir' : 'file'}" data-path="${absolutePath}">${name}@</span>`;
+        }
+
+        const isDir = typeof itemNode === 'object';
         return isDir
           ? `<span class="color-dir ls-item" data-type="dir" data-path="${absolutePath}">${name}/</span>`
           : `<span class="color-file ls-item" data-type="file" data-path="${absolutePath}">${name}</span>`;
