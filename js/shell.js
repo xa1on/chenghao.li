@@ -101,6 +101,7 @@ export class Shell {
     this.fileSystem = options.fileSystem || null;
     this.commands = options.commands || {};
     this.onConnect = options.onConnect || null;
+    this.typewriterDelay = options.typewriterDelay !== undefined ? options.typewriterDelay : (options.typeSpeed !== undefined ? options.typeSpeed : 50);
     this.placeholder = document.getElementById('input-placeholder');
   }
 
@@ -742,11 +743,56 @@ export class Shell {
     }
   }
 
-  async typeCommand(text, speed = 50) {
-    for (let i = 0; i < text.length; i++) {
-      this.updateInputDisplay(text.slice(0, i + 1));
-      audio.playKeyclick(text[i]);
-      await new Promise(resolve => setTimeout(resolve, speed));
+  async typeCommand(text, speed = this.typewriterDelay) {
+    // Parse inline delay tags like <d:500> or <delay:500>
+    const tokens = [];
+    const regex = /<(?:d|delay):(\d+)>/gi;
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        tokens.push({ type: 'text', value: text.slice(lastIndex, match.index) });
+      }
+      tokens.push({ type: 'delay', ms: parseInt(match[1], 10) });
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      tokens.push({ type: 'text', value: text.slice(lastIndex) });
+    }
+
+    let displayedText = '';
+    let globalCharIndex = 0;
+
+    for (const token of tokens) {
+      if (token.type === 'delay') {
+        if (token.ms > 0) {
+          await new Promise(resolve => setTimeout(resolve, token.ms));
+        }
+      } else if (token.type === 'text') {
+        for (let i = 0; i < token.value.length; i++) {
+          const char = token.value[i];
+          displayedText += char;
+          this.updateInputDisplay(displayedText);
+          audio.playKeyclick(char);
+
+          let delay = 50;
+          if (typeof speed === 'number') {
+            delay = speed;
+          } else if (typeof speed === 'function') {
+            delay = speed(char, globalCharIndex, text);
+          } else if (speed && typeof speed === 'object') {
+            const min = typeof speed.min === 'number' ? speed.min : 30;
+            const max = typeof speed.max === 'number' ? speed.max : 80;
+            delay = Math.floor(Math.random() * (max - min + 1)) + min;
+          }
+
+          if (delay > 0) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+          globalCharIndex++;
+        }
+      }
     }
   }
 
@@ -758,8 +804,8 @@ export class Shell {
 
     audio.startHum();
 
-    const cmdText = 'ssh ' + this.currentUsername + '@chenghao.li';
-    await this.typeCommand(cmdText, 50);
+    const cmdText = 'ssh ' + this.currentUsername + '<d:100>@chenghao.li';
+    await this.typeCommand(cmdText);
 
     await new Promise(resolve => setTimeout(resolve, 400));
     this.print('<span class="color-accent">C:\\Users\\cli&gt;</span> ssh ' + this.currentUsername + '@chenghao.li');
@@ -773,8 +819,8 @@ export class Shell {
 
     await new Promise(resolve => setTimeout(resolve, 600));
 
-    const lsText = 'ls # click items to navigate, or use cat/cd (check out info!)';
-    await this.typeCommand(lsText, 50);
+    const lsText = 'ls<d:500> # click items to navigate<d:250>, or use cat/cd<d:100> (check out info!)';
+    await this.typeCommand(lsText);
 
     await new Promise(resolve => setTimeout(resolve, 400));
     this.inputDisplay.textContent = '';

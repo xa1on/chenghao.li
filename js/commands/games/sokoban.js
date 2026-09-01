@@ -82,7 +82,7 @@ export const sokoban = {
     async function loadLevel(indexOrPath) {
       if (typeof indexOrPath === 'string') {
         // Load custom level
-        const targetPath = shell.resolvePath(shell.currentPath, indexOrPath);
+        const targetPath = shell.fileSystem.resolvePath(shell.currentPath, indexOrPath);
         if (!targetPath) {
           throw new Error(`File not found: ${indexOrPath}`);
         }
@@ -113,7 +113,7 @@ export const sokoban = {
     if (customPathStr) {
       try {
         mapState = await loadLevel(customPathStr);
-        initialMapStr = await shell.fileSystem.readFile(shell.resolvePath(shell.currentPath, customPathStr));
+        initialMapStr = await shell.fileSystem.readFile(shell.fileSystem.resolvePath(shell.currentPath, customPathStr));
       } catch (err) {
         shell.print(`Error starting custom Sokoban level: ${err.message}`, 'color-error');
         return;
