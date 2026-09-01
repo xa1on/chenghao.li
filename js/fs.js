@@ -1,4 +1,4 @@
-import { virtualFS } from './fs_manifest.js?v=97acf6d6db';
+import { virtualFS } from './fs_manifest.js?v=21c2556a89';
 export { virtualFS };
 
 function deepMerge(target, source) {

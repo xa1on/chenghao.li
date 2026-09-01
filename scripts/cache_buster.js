@@ -28,6 +28,7 @@ const IGNORED_NAMES = new Set([
 const IGNORED_PATHS = new Set([
   'archive/index.html',
   '.gitignore',
+  '404.html',
   'js/fs_manifest.js',
   'js/commands/index.js',
   'js/buddies.js'

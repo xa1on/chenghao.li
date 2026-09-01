@@ -1,5 +1,5 @@
 import { audio } from './audio.js?v=38beffc128';
-import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=828101034e';
+import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=546bd15a90';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;
@@ -825,11 +825,71 @@ export class Shell {
     return cleanCmd;
   }
 
+  getInitialDeepLinkPath() {
+    let rawPath = '';
+
+    // 1. Check sessionStorage from 404.html redirect
+    try {
+      const redirect = sessionStorage.getItem('spa_redirect');
+      if (redirect) {
+        sessionStorage.removeItem('spa_redirect');
+        rawPath = redirect;
+      }
+    } catch (e) {}
+
+    // 2. If no redirect, check URL query param (?p=/blogs or ?path=/blogs)
+    if (!rawPath && typeof window !== 'undefined' && window.location.search) {
+      const params = new URLSearchParams(window.location.search);
+      rawPath = params.get('p') || params.get('path') || '';
+    }
+
+    // 3. If no query param, check URL hash (#/blogs/placeholder.md)
+    if (!rawPath && typeof window !== 'undefined' && window.location.hash) {
+      rawPath = window.location.hash.replace(/^#\/?/, '');
+    }
+
+    // 4. If no query or hash, check pathname
+    if (!rawPath && typeof window !== 'undefined' && window.location.pathname && window.location.pathname !== '/' && !window.location.pathname.endsWith('index.html')) {
+      rawPath = window.location.pathname;
+    }
+
+    if (!rawPath) return '';
+
+    let clean = rawPath.split('?')[0].split('#')[0].trim();
+    while (clean.startsWith('/')) clean = clean.slice(1);
+    while (clean.endsWith('/')) clean = clean.slice(0, -1);
+
+    if (clean === '' || clean === 'index.html' || clean === '404.html') {
+      return '';
+    }
+
+    try {
+      window.history.replaceState(null, '', '/' + clean);
+    } catch (e) {}
+
+    return clean;
+  }
+
+  updateBrowserUrl(pathStr) {
+    if (typeof window === 'undefined' || !window.history) return;
+    try {
+      let clean = (pathStr || '').trim();
+      while (clean.startsWith('/')) clean = clean.slice(1);
+      while (clean.endsWith('/')) clean = clean.slice(0, -1);
+      const newUrl = clean ? '/' + clean : '/';
+      if (window.location.pathname !== newUrl) {
+        window.history.replaceState(null, '', newUrl);
+      }
+    } catch (e) {}
+  }
+
   async startConnection() {
     this.loginState = 'BOOTING';
     this.input.disabled = true;
     this.promptPrefix.innerHTML = '<span class="color-accent">C:\\Users\\cli&gt;</span>';
     this.inputDisplay.textContent = '';
+
+    const deepLinkPath = this.getInitialDeepLinkPath();
 
     audio.startHum();
 
@@ -850,11 +910,42 @@ export class Shell {
 
     await new Promise(resolve => setTimeout(resolve, 600));
 
+    // Preset initial ls
     await this.typeAndSubmit('ls<d:200> # click items to navigate<d:100>, or use cat/cd<d:75> (check out info!)');
 
-    await new Promise(resolve => setTimeout(resolve, 400));
+    if (deepLinkPath && this.fileSystem) {
+      const resolved = this.fileSystem.resolvePath([], deepLinkPath);
+      if (resolved !== null) {
+        const targetObj = this.fileSystem.getNodeByPath(resolved);
+        const isDir = typeof targetObj === 'object';
 
-    await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
+        await new Promise(resolve => setTimeout(resolve, 400));
+
+        if (isDir) {
+          await this.typeAndSubmit(`cd ${deepLinkPath}`);
+          await new Promise(resolve => setTimeout(resolve, 300));
+          await this.typeAndSubmit('ls');
+        } else {
+          const slashIdx = deepLinkPath.lastIndexOf('/');
+          if (slashIdx !== -1) {
+            const parentDir = deepLinkPath.slice(0, slashIdx);
+            const fileName = deepLinkPath.slice(slashIdx + 1);
+            await this.typeAndSubmit(`cd ${parentDir}`);
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await this.typeAndSubmit(`cat ${fileName}`);
+          } else {
+            await this.typeAndSubmit(`cat ${deepLinkPath}`);
+          }
+        }
+      } else {
+        await new Promise(resolve => setTimeout(resolve, 400));
+        await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
+        this.print(`Target path '${deepLinkPath}' not found.`, 'color-error');
+      }
+    } else {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
+    }
 
     this.input.disabled = false;
   }

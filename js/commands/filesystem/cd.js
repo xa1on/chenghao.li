@@ -8,6 +8,7 @@ export const cd = {
   run: async (args, shell) => {
     if (args.length === 0 || args[0] === '~') {
       shell.currentPath = [];
+      shell.updateBrowserUrl('');
     } else {
       const pathArg = args[0];
       const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg);
@@ -19,6 +20,7 @@ export const cd = {
           shell.print(`cd: not a directory: ${pathArg}`, 'color-error');
         } else {
           shell.currentPath = resolved;
+          shell.updateBrowserUrl(resolved.join('/'));
         }
       }
     }
