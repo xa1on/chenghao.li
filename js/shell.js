@@ -794,6 +794,13 @@ export class Shell {
         }
       }
     }
+    return displayedText;
+  }
+
+  async typeAndSubmit(text, speed = this.typewriterDelay) {
+    const cleanCmd = await this.typeCommand(text, speed);
+    await this.handleInputSubmit(cleanCmd);
+    return cleanCmd;
   }
 
   async startConnection() {
@@ -821,15 +828,11 @@ export class Shell {
 
     await new Promise(resolve => setTimeout(resolve, 600));
 
-    const lsMainText = 'ls<d:200> # click items to navigate<d:100>, or use cat/cd<d:75> (check out info!)';
-    await this.typeCommand(lsMainText);
-    await this.handleInputSubmit('ls # click items to navigate, or use cat/cd (check out info!)');
+    await this.typeAndSubmit('ls<d:200> # click items to navigate<d:100>, or use cat/cd<d:75> (check out info!)');
 
     await new Promise(resolve => setTimeout(resolve, 400));
 
-    const lsInfoText = '<d:100>ls<d:200> info';
-    await this.typeCommand(lsInfoText);
-    await this.handleInputSubmit('ls info');
+    await this.typeAndSubmit('<d:100>ls<d:200> info');
 
     this.input.disabled = false;
   }
