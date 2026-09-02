@@ -1,5 +1,5 @@
 import { audio } from './audio.js?v=38beffc128';
-import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=546bd15a90';
+import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=c82bafc8d5';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;

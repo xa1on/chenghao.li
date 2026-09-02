@@ -90,7 +90,6 @@ export const cat = {
         const content = await shell.fileSystem.readFile(resolved);
         const output = fileName.endsWith('.md') ? shell.parseMarkdown(content, resolved.slice(0, -1)) : shell.escapeHTML(content);
         shell.print(output);
-        shell.updateBrowserUrl(resolved.join('/'));
       } catch (err) {
         shell.print(`cat: error reading ${fileArg}: ${err.message}`, 'color-error');
       }
