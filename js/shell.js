@@ -879,12 +879,23 @@ export class Shell {
       cleanPath = '';
     }
 
-    // Parse command parameter from query string (?cmd=, ?p=, ?c=, ?run=)
+    // Parse command parameter from query string (?md=, ?cat=, ?cmd=, ?p=, ?c=, ?run=)
     let initialCommand = '';
     if (queryPart) {
       const params = new URLSearchParams(queryPart);
+      const mdParam = params.get('md');
+      const catParam = params.get('cat');
       const cmdParam = params.get('cmd') || params.get('p') || params.get('c') || params.get('run') || params.get('path');
-      if (cmdParam) {
+
+      if (mdParam !== null && mdParam !== undefined && mdParam !== '') {
+        let trimmedMd = mdParam.trim();
+        if (!trimmedMd.toLowerCase().endsWith('.md')) {
+          trimmedMd += '.md';
+        }
+        initialCommand = `cat ${trimmedMd}`;
+      } else if (catParam !== null && catParam !== undefined && catParam !== '') {
+        initialCommand = `cat ${catParam.trim()}`;
+      } else if (cmdParam) {
         let trimmedCmd = cmdParam.trim();
         // Unwrap outer matching quotes if present
         if ((trimmedCmd.startsWith('"') && trimmedCmd.endsWith('"')) ||
@@ -927,8 +938,20 @@ export class Shell {
         const trimmedCmd = cmdStr.trim();
         // Omit from URL if the command is purely 'ls'
         if (trimmedCmd && trimmedCmd.toLowerCase() !== 'ls') {
-          const escapedCmd = trimmedCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-          newUrl += `?cmd="${escapedCmd}"`;
+          // Check for single-file 'cat <file>' shorthands (e.g. ?md=name or ?cat=name.txt)
+          const catMatch = trimmedCmd.match(/^cat\s+([^\s"']+)$/i);
+          if (catMatch) {
+            const fileTarget = catMatch[1];
+            if (fileTarget.toLowerCase().endsWith('.md')) {
+              const baseName = fileTarget.slice(0, -3);
+              newUrl += `?md=${baseName}`;
+            } else {
+              newUrl += `?cat=${fileTarget}`;
+            }
+          } else {
+            const escapedCmd = trimmedCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+            newUrl += `?cmd="${escapedCmd}"`;
+          }
         }
       }
 
