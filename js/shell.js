@@ -847,18 +847,22 @@ export class Shell {
       rawPath = window.location.pathname;
     }
 
-    if (!rawPath) return '';
+    let clean = '';
+    if (rawPath) {
+      clean = rawPath.split('?')[0].split('#')[0].trim();
+      while (clean.startsWith('/')) clean = clean.slice(1);
+      while (clean.endsWith('/')) clean = clean.slice(0, -1);
 
-    let clean = rawPath.split('?')[0].split('#')[0].trim();
-    while (clean.startsWith('/')) clean = clean.slice(1);
-    while (clean.endsWith('/')) clean = clean.slice(0, -1);
-
-    if (clean === '' || clean === 'index.html' || clean === '404.html') {
-      return '';
+      if (clean === 'index.html' || clean === '404.html') {
+        clean = '';
+      }
     }
 
     try {
-      window.history.replaceState(null, '', '/' + clean);
+      const targetUrl = clean ? '/#/' + clean : '/#/';
+      if (window.location.pathname + window.location.hash !== targetUrl) {
+        window.history.replaceState(null, '', targetUrl);
+      }
     } catch (e) {}
 
     return clean;
@@ -870,8 +874,8 @@ export class Shell {
       let clean = (pathStr || '').trim();
       while (clean.startsWith('/')) clean = clean.slice(1);
       while (clean.endsWith('/')) clean = clean.slice(0, -1);
-      const newUrl = clean ? '/' + clean : '/';
-      if (window.location.pathname !== newUrl) {
+      const newUrl = clean ? '/#/' + clean : '/#/';
+      if (window.location.pathname + window.location.hash !== newUrl) {
         window.history.replaceState(null, '', newUrl);
       }
     } catch (e) {}
