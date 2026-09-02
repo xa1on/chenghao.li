@@ -1,5 +1,5 @@
 import { audio } from './audio.js?v=928da0a483';
-import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=20430d6594';
+import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=e2a32a0c08';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;
@@ -97,6 +97,7 @@ export class Shell {
     this.activeInputAbortResolver = null;
     this.abortSignal = false;
     this.isExecutingCommand = false;
+    this.isBooting = false;
 
     this.fileSystem = options.fileSystem || null;
     this.commands = options.commands || {};
@@ -108,6 +109,14 @@ export class Shell {
   mount() {
     if (this.isMounted) return;
     this.isMounted = true;
+
+    // Reload and replay boot if user navigates history
+    window.addEventListener('popstate', () => {
+      window.location.reload();
+    });
+    window.addEventListener('hashchange', () => {
+      window.location.reload();
+    });
 
     // Background preloading of lazy commands metadata
     for (const [name, cmd] of Object.entries(this.commands)) {
@@ -224,9 +233,7 @@ export class Shell {
 
     // Special keyboard listeners (Enter, Up, Down, Tab)
     this.input.addEventListener('keydown', async (e) => {
-      if (this.loginState === 'GAME' || this.loginState === 'BOOTING') {
-        return;
-      }
+      if (this.loginState !== 'LOGGED_IN' || this.isBooting) return;
 
       const ignoredKeys = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape'];
       if (!ignoredKeys.includes(e.key)) {
@@ -255,7 +262,6 @@ export class Shell {
         await this.handleInputSubmit(val);
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        if (this.loginState !== 'LOGGED_IN') return;
         if (this.commandHistory.length > 0 && this.historyIndex > 0) {
           this.historyIndex--;
           this.input.value = this.commandHistory[this.historyIndex];
@@ -263,7 +269,6 @@ export class Shell {
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        if (this.loginState !== 'LOGGED_IN') return;
         if (this.historyIndex < this.commandHistory.length - 1) {
           this.historyIndex++;
           this.input.value = this.commandHistory[this.historyIndex];
@@ -275,7 +280,6 @@ export class Shell {
         }
       } else if (e.key === 'Tab') {
         e.preventDefault();
-        if (this.loginState !== 'LOGGED_IN') return;
         this.handleTabAutocomplete();
       }
     });
@@ -297,7 +301,7 @@ export class Shell {
           }
 
           // Normal shell Ctrl+C behavior (only when NOT in a readInput sub-prompt)
-          if (this.loginState === 'LOGGED_IN' && !this.input.disabled) {
+          if (this.loginState === 'LOGGED_IN' && !this.isBooting && !this.input.disabled) {
             const currentVal = this.input.value;
             this.print(`<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/')}</span># ${this.escapeHTML(currentVal)}^C`);
             this.input.value = '';
@@ -309,22 +313,17 @@ export class Shell {
       }
     });
 
-    // Global click delegation handler
+    // Delegate click handling across document
     document.addEventListener('click', async (e) => {
       const target = e.target;
-      if (!target) return;
-
-      const isInteractive = target.tagName === 'A' ||
-        target.classList.contains('ls-item') ||
-        target.classList.contains('cmd-link') ||
-        target.tagName === 'BUTTON';
+      const isInteractive = target.closest('a, button, input, .cmd-link, .ls-item, .contact-link, .char-cell');
 
       if (isInteractive) {
         audio.playLinkClick();
       }
 
       // Handle focus redirection
-      if (this.loginState !== 'GAME') {
+      if (this.loginState !== 'GAME' && !this.isBooting) {
         const selectedText = window.getSelection().toString();
         if (!selectedText) {
           this.focus();
@@ -332,7 +331,7 @@ export class Shell {
       }
 
       // Handle interactive item clicks (ls-item and cmd-link)
-      if (this.loginState === 'LOGGED_IN' && !this.isExecutingCommand) {
+      if (this.loginState === 'LOGGED_IN' && !this.isExecutingCommand && !this.isBooting) {
         if (target.classList.contains('ls-item')) {
           e.stopPropagation();
           const type = target.getAttribute('data-type');
@@ -538,11 +537,13 @@ export class Shell {
       console.error(err);
     } finally {
       this.isExecutingCommand = false;
-      this.input.disabled = false;
       this.inputLine.style.visibility = 'visible';
-      this.abortSignal = false;
+      this.input.disabled = this.isBooting;
       this.updatePrompt();
-      this.focus();
+      if (!this.isBooting) {
+        this.focus();
+      }
+      this.abortSignal = false;
     }
   }
 
@@ -572,6 +573,10 @@ export class Shell {
     const args = parts.slice(1);
 
     this.abortSignal = false;
+
+    if (command !== 'cd' && !this.isBooting) {
+      this.updateBrowserUrl(this.currentPath.join('/'), commandPart);
+    }
 
     if (this.commands[command]) {
       const cmd = this.commands[command];
@@ -819,7 +824,7 @@ export class Shell {
     return cleanCmd;
   }
 
-  getInitialDeepLinkPath() {
+  getInitialDeepLink() {
     let rawPath = '';
 
     // 1. Check sessionStorage from 404.html redirect
@@ -831,51 +836,103 @@ export class Shell {
       }
     } catch (e) {}
 
-    // 2. If no redirect, check URL query param (?p=/blogs or ?path=/blogs)
-    if (!rawPath && typeof window !== 'undefined' && window.location.search) {
-      const params = new URLSearchParams(window.location.search);
-      rawPath = params.get('p') || params.get('path') || '';
-    }
-
-    // 3. If no query param, check URL hash (#/blogs/placeholder.md)
-    if (!rawPath && typeof window !== 'undefined' && window.location.hash) {
-      rawPath = window.location.hash.replace(/^#\/?/, '');
-    }
-
-    // 4. If no query or hash, check pathname
-    if (!rawPath && typeof window !== 'undefined' && window.location.pathname && window.location.pathname !== '/' && !window.location.pathname.endsWith('index.html')) {
-      rawPath = window.location.pathname;
-    }
-
-    let clean = '';
-    if (rawPath) {
-      clean = rawPath.split('?')[0].split('#')[0].trim();
-      while (clean.startsWith('/')) clean = clean.slice(1);
-      while (clean.endsWith('/')) clean = clean.slice(0, -1);
-
-      if (clean === 'index.html' || clean === '404.html') {
-        clean = '';
+    // 2. If no redirect, check URL pathname, search query, or hash
+    if (!rawPath && typeof window !== 'undefined') {
+      if (window.location.pathname && window.location.pathname !== '/' && !window.location.pathname.endsWith('index.html')) {
+        rawPath = window.location.pathname + window.location.search + window.location.hash;
+      } else if (window.location.hash) {
+        rawPath = window.location.hash.replace(/^#\/?/, '');
+      } else if (window.location.search) {
+        rawPath = window.location.search;
       }
     }
 
-    try {
-      const targetUrl = clean ? '/#/' + clean : '/#/';
-      if (window.location.pathname + window.location.hash !== targetUrl) {
-        window.history.replaceState(null, '', targetUrl);
-      }
-    } catch (e) {}
+    if (!rawPath) {
+      return { initialPath: '', initialCommand: '' };
+    }
 
-    return clean;
+    // Extract path part and query part
+    let pathPart = rawPath;
+    let queryPart = '';
+    const qIndex = rawPath.indexOf('?');
+    if (qIndex !== -1) {
+      pathPart = rawPath.slice(0, qIndex);
+      queryPart = rawPath.slice(qIndex + 1);
+    } else if (typeof window !== 'undefined' && window.location.search) {
+      queryPart = window.location.search.replace(/^\?/, '');
+    }
+
+    let cleanPath = pathPart.split('#')[0].trim();
+    while (cleanPath.startsWith('/')) cleanPath = cleanPath.slice(1);
+    while (cleanPath.endsWith('/')) cleanPath = cleanPath.slice(0, -1);
+
+    // Strip leading '~' or 'root' prefixes (e.g. ~/blogs -> blogs, ~ -> '')
+    if (cleanPath === '~' || cleanPath === 'root') {
+      cleanPath = '';
+    } else if (cleanPath.startsWith('~/')) {
+      cleanPath = cleanPath.slice(2);
+    } else if (cleanPath.startsWith('root/')) {
+      cleanPath = cleanPath.slice(5);
+    }
+
+    if (cleanPath === 'index.html' || cleanPath === '404.html') {
+      cleanPath = '';
+    }
+
+    // Parse command parameter from query string (?cmd=, ?p=, ?c=, ?run=)
+    let initialCommand = '';
+    if (queryPart) {
+      const params = new URLSearchParams(queryPart);
+      const cmdParam = params.get('cmd') || params.get('p') || params.get('c') || params.get('run') || params.get('path');
+      if (cmdParam) {
+        let trimmedCmd = cmdParam.trim();
+        // Unwrap outer matching quotes if present
+        if ((trimmedCmd.startsWith('"') && trimmedCmd.endsWith('"')) ||
+            (trimmedCmd.startsWith("'") && trimmedCmd.endsWith("'"))) {
+          trimmedCmd = trimmedCmd.slice(1, -1);
+        }
+        // Unescape escaped quotes \" -> "
+        trimmedCmd = trimmedCmd.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        initialCommand = trimmedCmd;
+      }
+    }
+
+    // Immediately sync browser URL so the address bar reflects the original URL upon load
+    this.updateBrowserUrl(cleanPath, initialCommand);
+
+    return {
+      initialPath: cleanPath,
+      initialCommand: initialCommand
+    };
   }
 
-  updateBrowserUrl(pathStr) {
+  updateBrowserUrl(pathStr, cmdStr = '') {
     if (typeof window === 'undefined' || !window.history) return;
     try {
-      let clean = (pathStr || '').trim();
-      while (clean.startsWith('/')) clean = clean.slice(1);
-      while (clean.endsWith('/')) clean = clean.slice(0, -1);
-      const newUrl = clean ? '/#/' + clean : '/#/';
-      if (window.location.pathname + window.location.hash !== newUrl) {
+      let cleanPath = (pathStr || '').trim();
+      while (cleanPath.startsWith('/')) cleanPath = cleanPath.slice(1);
+      while (cleanPath.endsWith('/')) cleanPath = cleanPath.slice(0, -1);
+
+      if (cleanPath === '~' || cleanPath === 'root') {
+        cleanPath = '';
+      } else if (cleanPath.startsWith('~/')) {
+        cleanPath = cleanPath.slice(2);
+      } else if (cleanPath.startsWith('root/')) {
+        cleanPath = cleanPath.slice(5);
+      }
+
+      let newUrl = cleanPath ? '/~/' + cleanPath + '/' : '/~/';
+
+      if (cmdStr && typeof cmdStr === 'string') {
+        const trimmedCmd = cmdStr.trim();
+        // Omit from URL if the command is purely 'ls'
+        if (trimmedCmd && trimmedCmd.toLowerCase() !== 'ls') {
+          const escapedCmd = trimmedCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+          newUrl += `?cmd="${escapedCmd}"`;
+        }
+      }
+
+      if (window.location.pathname + window.location.search + window.location.hash !== newUrl) {
         window.history.replaceState(null, '', newUrl);
       }
     } catch (e) {}
@@ -883,11 +940,12 @@ export class Shell {
 
   async startConnection() {
     this.loginState = 'BOOTING';
+    this.isBooting = true;
     this.input.disabled = true;
     this.promptPrefix.innerHTML = '<span class="color-accent">C:\\Users\\cli&gt;</span>';
     this.inputDisplay.textContent = '';
 
-    const deepLinkPath = this.getInitialDeepLinkPath();
+    const { initialPath, initialCommand } = this.getInitialDeepLink();
 
     audio.startHum();
 
@@ -911,8 +969,11 @@ export class Shell {
     // Preset initial ls
     await this.typeAndSubmit('ls<d:200> # click items to navigate<d:100>, or use cat/cd<d:75> (check out info!)');
 
-    if (deepLinkPath && this.fileSystem) {
-      const resolved = this.fileSystem.resolvePath([], deepLinkPath);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
+
+    if (initialPath && this.fileSystem) {
+      const resolved = this.fileSystem.resolvePath([], initialPath);
       if (resolved !== null) {
         const targetObj = this.fileSystem.getNodeByPath(resolved);
         const isDir = typeof targetObj === 'object';
@@ -920,31 +981,39 @@ export class Shell {
         await new Promise(resolve => setTimeout(resolve, 400));
 
         if (isDir) {
-          await this.typeAndSubmit(`cd ${deepLinkPath}`);
-          await new Promise(resolve => setTimeout(resolve, 300));
-          await this.typeAndSubmit('ls');
+          await this.typeAndSubmit(`cd ${initialPath}`);
+          if (!initialCommand) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+            await this.typeAndSubmit('ls');
+          }
         } else {
-          const slashIdx = deepLinkPath.lastIndexOf('/');
+          // Legacy file path deep link without ?cmd=
+          const slashIdx = initialPath.lastIndexOf('/');
           if (slashIdx !== -1) {
-            const parentDir = deepLinkPath.slice(0, slashIdx);
-            const fileName = deepLinkPath.slice(slashIdx + 1);
+            const parentDir = initialPath.slice(0, slashIdx);
+            const fileName = initialPath.slice(slashIdx + 1);
             await this.typeAndSubmit(`cd ${parentDir}`);
             await new Promise(resolve => setTimeout(resolve, 300));
             await this.typeAndSubmit(`cat ${fileName}`);
           } else {
-            await this.typeAndSubmit(`cat ${deepLinkPath}`);
+            await this.typeAndSubmit(`cat ${initialPath}`);
           }
         }
       } else {
-        await new Promise(resolve => setTimeout(resolve, 400));
-        await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
-        this.print(`Target path '${deepLinkPath}' not found.`, 'color-error');
+        this.print(`Target path '${initialPath}' not found.`, 'color-error');
       }
-    } else {
-      await new Promise(resolve => setTimeout(resolve, 400));
-      await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
     }
 
+    if (initialCommand) {
+      await new Promise(resolve => setTimeout(resolve, 400));
+      await this.typeAndSubmit(initialCommand);
+    }
+
+    this.isBooting = false;
     this.input.disabled = false;
+    this.inputLine.style.visibility = 'visible';
+    this.updatePrompt();
+    this.focus();
+    this.updateBrowserUrl(this.currentPath.join('/'), initialCommand);
   }
 }

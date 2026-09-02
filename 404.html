@@ -5,10 +5,10 @@
   <meta charset="UTF-8">
   <title>Redirecting...</title>
   <script>
-    // GitHub Pages SPA Redirect: capture target path and redirect to /#/path
-    const redirectPath = window.location.pathname.replace(/^\/+/, '') + window.location.search + window.location.hash;
+    // GitHub Pages SPA Redirect: capture target path and redirect to /
+    const redirectPath = window.location.pathname + window.location.search + window.location.hash;
     sessionStorage.setItem('spa_redirect', redirectPath);
-    window.location.replace('/#/' + redirectPath);
+    window.location.replace('/');
   </script>
 </head>
 
