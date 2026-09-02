@@ -1,4 +1,4 @@
-import { virtualFS } from './fs_manifest.js?v=c328b32c87';
+import { virtualFS } from './fs_manifest.js?v=75ac40d39d';
 export { virtualFS };
 
 function deepMerge(target, source) {
@@ -72,15 +72,6 @@ export function resolvePath(vfs, currentPath, pathStr, followFinalSymlink = true
       let directTarget = [...target, seg];
       let directNode = getNodeByPath(vfs, directTarget, false);
 
-      if (directNode === null && !seg.endsWith('.symlink')) {
-        const symlinkTarget = [...target, seg + '.symlink'];
-        const symlinkNode = getNodeByPath(vfs, symlinkTarget, false);
-        if (symlinkNode !== null) {
-          directTarget = symlinkTarget;
-          directNode = symlinkNode;
-        }
-      }
-
       if (directNode === null) {
         return null;
       }
@@ -151,8 +142,19 @@ export class FileSystem {
   }
 
   async readFile(pathArr) {
+    const node = this.getNodeByPath(pathArr);
+    if (node === null) {
+      throw new Error('No such file or directory');
+    }
+    if (isSymlink(node)) {
+      return node.symlink;
+    }
+    if (typeof node === 'object') {
+      throw new Error('Is a directory');
+    }
+
     if (this.isBuiltInPath(pathArr)) {
-      const hash = this.getNodeByPath(pathArr);
+      const hash = node;
       const filePath = '/' + pathArr.join('/') + (typeof hash === 'string' && hash && hash !== 'core' ? '?v=' + hash : '');
       const response = await fetch(filePath);
       if (!response.ok) {
@@ -160,16 +162,6 @@ export class FileSystem {
       }
       return await response.text();
     } else {
-      const node = this.getNodeByPath(pathArr);
-      if (node === null) {
-        throw new Error('No such file or directory');
-      }
-      if (isSymlink(node)) {
-        return node.symlink;
-      }
-      if (typeof node === 'object') {
-        throw new Error('Is a directory');
-      }
       return node;
     }
   }
@@ -195,7 +187,6 @@ export class FileSystem {
       const linkName = fileName.slice(0, -8);
       const symlinkObj = { symlink: content.trim() };
       rootParent[linkName] = symlinkObj;
-      rootParent[fileName] = content;
 
       let userParent = this.userTree;
       for (const part of parentPath) {
@@ -205,7 +196,6 @@ export class FileSystem {
         userParent = userParent[part];
       }
       userParent[linkName] = symlinkObj;
-      userParent[fileName] = content;
     } else {
       // Standard file update
       rootParent[fileName] = content;
@@ -244,7 +234,6 @@ export class FileSystem {
 
     const symlinkObj = { symlink: targetStr };
     rootParent[linkName] = symlinkObj;
-    rootParent[linkName + '.symlink'] = targetStr;
 
     let userParent = this.userTree;
     for (const part of parentPath) {
@@ -254,7 +243,6 @@ export class FileSystem {
       userParent = userParent[part];
     }
     userParent[linkName] = symlinkObj;
-    userParent[linkName + '.symlink'] = targetStr;
 
     this.saveUserFS();
   }
@@ -332,11 +320,6 @@ export class FileSystem {
     const rootParent = this.getNodeByPath(parentPath, false);
     if (rootParent && typeof rootParent === 'object') {
       delete rootParent[name];
-      if (name.endsWith('.symlink')) {
-        delete rootParent[name.slice(0, -8)];
-      } else {
-        delete rootParent[name + '.symlink'];
-      }
     }
 
     // Delete from userTree
@@ -352,11 +335,6 @@ export class FileSystem {
     }
     if (found && userParent && typeof userParent === 'object') {
       delete userParent[name];
-      if (name.endsWith('.symlink')) {
-        delete userParent[name.slice(0, -8)];
-      } else {
-        delete userParent[name + '.symlink'];
-      }
     }
 
     this.saveUserFS();

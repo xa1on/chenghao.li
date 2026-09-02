@@ -1,5 +1,5 @@
-import { FileSystem } from './fs.js?v=0b21cbfb3c';
-import { Shell } from './shell.js?v=c4ff3d833f';
+import { FileSystem } from './fs.js?v=6cb27313a8';
+import { Shell } from './shell.js?v=a5fef86fa2';
 import { commands } from './commands/index.js?v=64d77229fd';
 
 // Instantiate FileSystem and Shell contexts

@@ -1,5 +1,5 @@
-import { BaseEditor, runEditor } from '../../utils/editor.js?v=c5681eb0a0';
-import { audio } from '../../audio.js?v=38beffc128';
+import { BaseEditor, runEditor } from '../../utils/editor.js?v=f953213602';
+import { audio } from '../../audio.js?v=928da0a483';
 
 export const vim = {
   name: 'vim',

@@ -1,5 +1,5 @@
-import { audio } from './audio.js?v=38beffc128';
-import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=c82bafc8d5';
+import { audio } from './audio.js?v=928da0a483';
+import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=20430d6594';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;
@@ -106,7 +106,8 @@ export class Shell {
   }
 
   mount() {
-    // Expose compatibility namespace for scripts if needed, but decoupled internally
+    if (this.isMounted) return;
+    this.isMounted = true;
 
     // Background preloading of lazy commands metadata
     for (const [name, cmd] of Object.entries(this.commands)) {
@@ -708,14 +709,7 @@ export class Shell {
       const targetDir = this.fileSystem.getNodeByPath(targetPath);
       if (!targetDir || typeof targetDir !== 'object') return;
 
-      const rawDirKeys = Object.keys(targetDir);
-      const dirKeys = rawDirKeys.filter(k => {
-        if (k.endsWith('.symlink')) {
-          const base = k.slice(0, -8);
-          if (rawDirKeys.includes(base)) return false;
-        }
-        return true;
-      });
+      const dirKeys = Object.keys(targetDir);
       if (targetPath.length > 0) {
         dirKeys.push('..');
       }

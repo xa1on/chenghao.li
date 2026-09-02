@@ -304,6 +304,7 @@ export async function runEditor(EditorClass, args, cmdName, shell) {
   }
 
   return new Promise((resolve) => {
+    let editor = null;
     const onSave = (content) => {
       try {
         shell.fileSystem.writeFile(resolved, content);
@@ -317,7 +318,19 @@ export async function runEditor(EditorClass, args, cmdName, shell) {
       resolve();
     };
 
-    const editor = new EditorClass(shell, fileArg, initialContent, resolved, onSave, onExit, isNewFile);
-    editor.start();
+    try {
+      editor = new EditorClass(shell, fileArg, initialContent, resolved, onSave, onExit, isNewFile);
+      editor.start();
+    } catch (err) {
+      if (editor && typeof editor.cleanup === 'function') {
+        editor.cleanup();
+      } else {
+        shell.loginState = 'LOGGED_IN';
+        shell.updatePrompt();
+        shell.focus();
+      }
+      shell.print(`${cmdName}: editor failed: ${err.message}`, 'color-error');
+      resolve();
+    }
   });
 }

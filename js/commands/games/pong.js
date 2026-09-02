@@ -1,4 +1,4 @@
-import { audio } from '../../audio.js?v=38beffc128';
+import { audio } from '../../audio.js?v=928da0a483';
 
 export const pong = {
   name: 'pong',
@@ -140,103 +140,106 @@ export const pong = {
         }
       }
     };
-    document.addEventListener('keydown', keyHandler);
+    try {
+      document.addEventListener('keydown', keyHandler);
 
-    await new Promise((resolve) => {
-      const gameInterval = setInterval(() => {
-        if (pongGame.gameOver || shell.abortSignal) {
-          clearInterval(gameInterval);
-          resolve();
-          return;
-        }
-
-        // Move Ball
-        pongGame.ballX += pongGame.ballDx;
-        pongGame.ballY += pongGame.ballDy;
-
-        // Bounce top/bottom
-        if (pongGame.ballY <= 0) {
-          pongGame.ballY = 0;
-          pongGame.ballDy = -pongGame.ballDy;
-          audio.playBeep(450, 250, 0.06, 'square', 0.12);
-        } else if (pongGame.ballY >= pongGame.boardHeight - 1) {
-          pongGame.ballY = pongGame.boardHeight - 1;
-          pongGame.ballDy = -pongGame.ballDy;
-          audio.playBeep(450, 250, 0.06, 'square', 0.12);
-        }
-
-        // Left paddle collision
-        if (pongGame.ballX <= 2 && pongGame.ballDx < 0) {
-          if (pongGame.ballY >= pongGame.playerY && pongGame.ballY < pongGame.playerY + pongGame.paddleHeight) {
-            pongGame.ballX = 2;
-            pongGame.ballDx = 0.5;
-            const hitPos = pongGame.ballY - pongGame.playerY;
-            if (hitPos < 1.0) pongGame.ballDy = -0.4;
-            else if (hitPos >= 2.0) pongGame.ballDy = 0.4;
-            else pongGame.ballDy = (Math.random() > 0.5 ? 0.2 : -0.2);
-            audio.playBeep(600, 300, 0.08, 'square', 0.15);
+      await new Promise((resolve) => {
+        const gameInterval = setInterval(() => {
+          if (pongGame.gameOver || shell.abortSignal) {
+            clearInterval(gameInterval);
+            resolve();
+            return;
           }
-        }
 
-        // Right paddle collision
-        if (pongGame.ballX >= pongGame.boardWidth - 3 && pongGame.ballDx > 0) {
-          if (pongGame.ballY >= pongGame.cpuY && pongGame.ballY < pongGame.cpuY + pongGame.paddleHeight) {
-            pongGame.ballX = pongGame.boardWidth - 3;
-            pongGame.ballDx = -0.5;
-            const hitPos = pongGame.ballY - pongGame.cpuY;
-            if (hitPos < 1.0) pongGame.ballDy = -0.4;
-            else if (hitPos >= 2.0) pongGame.ballDy = 0.4;
-            else pongGame.ballDy = (Math.random() > 0.5 ? 0.2 : -0.2);
-            audio.playBeep(600, 300, 0.08, 'square', 0.15);
+          // Move Ball
+          pongGame.ballX += pongGame.ballDx;
+          pongGame.ballY += pongGame.ballDy;
+
+          // Wall bounce (Top and Bottom)
+          if (pongGame.ballY <= 0) {
+            pongGame.ballY = 0;
+            pongGame.ballDy = Math.abs(pongGame.ballDy);
+            audio.playBeep(260, 260, 0.04, 'square', 0.08);
+          } else if (pongGame.ballY >= pongGame.boardHeight - 1) {
+            pongGame.ballY = pongGame.boardHeight - 1;
+            pongGame.ballDy = -Math.abs(pongGame.ballDy);
+            audio.playBeep(260, 260, 0.04, 'square', 0.08);
           }
-        }
 
-        // CPU AI movement (Granular tracking)
-        const ballTarget = pongGame.ballY;
-        const cpuCenter = pongGame.cpuY + 1.5; // Center of 3-tall paddle
-        let moveProbability = 0.45;
-        if (pongGame.difficulty === 'medium') moveProbability = 0.70;
-        if (pongGame.difficulty === 'hard') moveProbability = 0.92;
-
-        if (Math.random() < moveProbability) {
-          if (cpuCenter < ballTarget) {
-            pongGame.cpuY = Math.min(pongGame.boardHeight - pongGame.paddleHeight, pongGame.cpuY + 0.25);
-          } else if (cpuCenter > ballTarget) {
-            pongGame.cpuY = Math.max(0, pongGame.cpuY - 0.25);
+          // Left paddle collision
+          if (pongGame.ballX <= 2 && pongGame.ballDx < 0) {
+            if (pongGame.ballY >= pongGame.playerY && pongGame.ballY < pongGame.playerY + pongGame.paddleHeight) {
+              pongGame.ballX = 2;
+              pongGame.ballDx = 0.5;
+              // Angle modulation based on hit position
+              const hitPos = pongGame.ballY - pongGame.playerY;
+              if (hitPos < 1.0) pongGame.ballDy = -0.4;
+              else if (hitPos >= 2.0) pongGame.ballDy = 0.4;
+              else pongGame.ballDy = (Math.random() > 0.5 ? 0.2 : -0.2);
+              audio.playBeep(440, 880, 0.06, 'square', 0.12);
+            }
           }
-        }
 
-        // Point scoring
-        if (pongGame.ballX < 0) {
-          pongGame.cpuScore++;
-          if (pongGame.cpuScore >= 5) {
-            pongGame.gameOver = true;
-          } else {
-            audio.playBeep(220, 80, 0.35, 'sawtooth', 0.12);
-            resetBall(1);
+          // Right paddle collision
+          if (pongGame.ballX >= pongGame.boardWidth - 3 && pongGame.ballDx > 0) {
+            if (pongGame.ballY >= pongGame.cpuY && pongGame.ballY < pongGame.cpuY + pongGame.paddleHeight) {
+              pongGame.ballX = pongGame.boardWidth - 3;
+              pongGame.ballDx = -0.5;
+              const hitPos = pongGame.ballY - pongGame.cpuY;
+              if (hitPos < 1.0) pongGame.ballDy = -0.4;
+              else if (hitPos >= 2.0) pongGame.ballDy = 0.4;
+              else pongGame.ballDy = (Math.random() > 0.5 ? 0.2 : -0.2);
+              audio.playBeep(600, 300, 0.08, 'square', 0.15);
+            }
           }
-        } else if (pongGame.ballX >= pongGame.boardWidth) {
-          pongGame.playerScore++;
-          if (pongGame.playerScore >= 5) {
-            pongGame.gameOver = true;
-          } else {
-            audio.playMelody([
-              { f: 523.25, dur: 0.06, delay: 0.00 },
-              { f: 659.25, dur: 0.06, delay: 0.05 },
-              { f: 783.99, dur: 0.06, delay: 0.10 },
-              { f: 1046.50, dur: 0.06, delay: 0.15 }
-            ], 'square', 0.1);
-            resetBall(-1);
+
+          // CPU AI movement (Granular tracking)
+          const ballTarget = pongGame.ballY;
+          const cpuCenter = pongGame.cpuY + 1.5; // Center of 3-tall paddle
+          let moveProbability = 0.45;
+          if (pongGame.difficulty === 'medium') moveProbability = 0.70;
+          if (pongGame.difficulty === 'hard') moveProbability = 0.92;
+
+          if (Math.random() < moveProbability) {
+            if (cpuCenter < ballTarget) {
+              pongGame.cpuY = Math.min(pongGame.boardHeight - pongGame.paddleHeight, pongGame.cpuY + 0.25);
+            } else if (cpuCenter > ballTarget) {
+              pongGame.cpuY = Math.max(0, pongGame.cpuY - 0.25);
+            }
           }
-        }
 
-        drawPong();
-      }, 40);
-    });
+          // Point scoring
+          if (pongGame.ballX < 0) {
+            pongGame.cpuScore++;
+            if (pongGame.cpuScore >= 5) {
+              pongGame.gameOver = true;
+            } else {
+              audio.playBeep(220, 80, 0.35, 'sawtooth', 0.12);
+              resetBall(1);
+            }
+          } else if (pongGame.ballX >= pongGame.boardWidth) {
+            pongGame.playerScore++;
+            if (pongGame.playerScore >= 5) {
+              pongGame.gameOver = true;
+            } else {
+              audio.playMelody([
+                { f: 523.25, dur: 0.06, delay: 0.00 },
+                { f: 659.25, dur: 0.06, delay: 0.05 },
+                { f: 783.99, dur: 0.06, delay: 0.10 },
+                { f: 1046.50, dur: 0.06, delay: 0.15 }
+              ], 'square', 0.1);
+              resetBall(-1);
+            }
+          }
 
-    // Cleanup listeners and restore state
-    document.removeEventListener('keydown', keyHandler);
-    shell.loginState = 'LOGGED_IN';
+          drawPong();
+        }, 40);
+      });
+    } finally {
+      // Cleanup listeners and restore state
+      document.removeEventListener('keydown', keyHandler);
+      shell.loginState = 'LOGGED_IN';
+    }
 
     if (pongGame.playerScore >= 5) {
       audio.playMelody([

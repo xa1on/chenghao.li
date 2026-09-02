@@ -8,6 +8,7 @@ class AudioManager {
     this.humOsc2 = null;
     this.humLfo = null;
     this.humGain = null;
+    this.humStopTimeout = null;
     this.isHumming = false;
     this.humVolume = 0.04; // Track hum level (booting vs active)
 
@@ -163,6 +164,10 @@ class AudioManager {
     if (vol !== null) {
       this.humVolume = vol;
     }
+    if (this.humStopTimeout) {
+      clearTimeout(this.humStopTimeout);
+      this.humStopTimeout = null;
+    }
     if (!this.enabled) return;
     this.ensureContext();
     if (!this.ctx || this.ctx.state === 'suspended') return;
@@ -216,6 +221,10 @@ class AudioManager {
 
   stopHum(immediate = false) {
     this.isHumming = false;
+    if (this.humStopTimeout) {
+      clearTimeout(this.humStopTimeout);
+      this.humStopTimeout = null;
+    }
     if (!this.ctx || !this.humOsc1) return;
 
     const now = this.ctx.currentTime;
@@ -251,7 +260,10 @@ class AudioManager {
     if (immediate) {
       doStop();
     } else {
-      setTimeout(doStop, fadeOutTime * 1000 + 100);
+      this.humStopTimeout = setTimeout(() => {
+        doStop();
+        this.humStopTimeout = null;
+      }, fadeOutTime * 1000 + 100);
     }
 
     this.humOsc1 = null;

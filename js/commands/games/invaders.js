@@ -1,4 +1,4 @@
-import { audio } from '../../audio.js?v=38beffc128';
+import { audio } from '../../audio.js?v=928da0a483';
 
 export const invaders = {
   name: 'invaders',
@@ -237,143 +237,160 @@ export const invaders = {
         }
       }
     };
-    document.addEventListener('keydown', keyHandler);
+    
+    try {
+      document.addEventListener('keydown', keyHandler);
 
-    // Dynamic gameplay interval
-    await new Promise((resolve) => {
-      const loop = setInterval(() => {
-        if (game.gameOver || shell.abortSignal) {
-          clearInterval(loop);
-          resolve();
-          return;
-        }
+      await new Promise((resolve) => {
+        let alienMoveTimer = 0;
 
-        game.tickCount++;
+        const loop = setInterval(() => {
+          if (game.gameOver || shell.abortSignal) {
+            clearInterval(loop);
+            resolve();
+            return;
+          }
 
-        // 1. Move Player Bullets
-        game.bullets.forEach(b => b.y -= 1);
-        game.bullets = game.bullets.filter(b => b.y >= 0);
+          // 1. Update Player Bullets
+          for (let i = game.bullets.length - 1; i >= 0; i--) {
+            game.bullets[i].y -= 1.0;
+            if (game.bullets[i].y < 0) {
+              game.bullets.splice(i, 1);
+            }
+          }
 
-        // 2. Move Alien Bullets
-        game.alienBullets.forEach(b => b.y += 0.8);
-        game.alienBullets = game.alienBullets.filter(b => b.y < height);
+          // 2. Update Alien Bullets
+          for (let i = game.alienBullets.length - 1; i >= 0; i--) {
+            game.alienBullets[i].y += 0.5;
+            if (game.alienBullets[i].y >= height) {
+              game.alienBullets.splice(i, 1);
+            }
+          }
 
-        // 3. Move Aliens (moves periodically to match retro feel)
-        if (game.tickCount % alienMoveSpeed === 0) {
-          let hitBorder = false;
+          // 3. Move Aliens on interval
+          alienMoveTimer += 50;
+          if (alienMoveTimer >= alienMoveSpeed) {
+            alienMoveTimer = 0;
+
+            // Check if boundary hit
+            let changeDirection = false;
+            game.aliens.forEach(al => {
+              if (al.alive) {
+                if (game.alienDir === 1 && al.x + 4 >= width - 1) {
+                  changeDirection = true;
+                } else if (game.alienDir === -1 && al.x <= 1) {
+                  changeDirection = true;
+                }
+              }
+            });
+
+            if (changeDirection) {
+              game.alienDir *= -1;
+              game.aliens.forEach(al => {
+                al.y += 1;
+              });
+              audio.playBeep(90, 70, 0.05, 'triangle', 0.1);
+            } else {
+              game.aliens.forEach(al => {
+                al.x += game.alienDir;
+              });
+            }
+          }
+
+          // 4. Random Alien shooting
           game.aliens.forEach(al => {
-            if (!al.alive) return;
-            const nextX = al.x + game.alienDir * 2;
-            if (nextX < 1 || nextX > width - 5) {
-              hitBorder = true;
+            if (al.alive && Math.random() < shootFreq) {
+              // Find if bottom-most alien in its column to avoid self-shooting
+              const columnAliens = game.aliens.filter(other => other.alive && other.x === al.x && other.y > al.y);
+              if (columnAliens.length === 0) {
+                game.alienBullets.push({ x: al.x + 2, y: al.y + 2 });
+              }
             }
           });
 
-          if (hitBorder) {
-            game.alienDir = -game.alienDir;
-            game.aliens.forEach(al => {
-              if (al.alive) al.y += 2;
-            });
-          } else {
-            game.aliens.forEach(al => {
-              if (al.alive) al.x += game.alienDir * 2;
-            });
-          }
-        }
-
-        // 4. Random Alien shooting
-        game.aliens.forEach(al => {
-          if (al.alive && Math.random() < shootFreq) {
-            // Find if bottom-most alien in its column to avoid self-shooting
-            const columnAliens = game.aliens.filter(other => other.alive && other.x === al.x && other.y > al.y);
-            if (columnAliens.length === 0) {
-              game.alienBullets.push({ x: al.x + 2, y: al.y + 2 });
+          // 5. Collisions: Player bullets hitting Aliens (Iterated backwards to prevent index skips)
+          for (let i = game.bullets.length - 1; i >= 0; i--) {
+            const bullet = game.bullets[i];
+            const hitAlien = game.aliens.find(al => al.alive && bullet.x >= al.x && bullet.x < al.x + 4 && Math.round(bullet.y) >= al.y && Math.round(bullet.y) < al.y + 2);
+            if (hitAlien) {
+              hitAlien.alive = false;
+              game.bullets.splice(i, 1);
+              game.score += 30;
+              audio.playBeep(250, 60, 0.15, 'sawtooth', 0.15);
             }
           }
-        });
 
-        // 5. Collisions: Player bullets hitting Aliens (Iterated backwards to prevent index skips)
-        for (let i = game.bullets.length - 1; i >= 0; i--) {
-          const bullet = game.bullets[i];
-          const hitAlien = game.aliens.find(al => al.alive && bullet.x >= al.x && bullet.x < al.x + 4 && Math.round(bullet.y) >= al.y && Math.round(bullet.y) < al.y + 2);
-          if (hitAlien) {
-            hitAlien.alive = false;
-            game.bullets.splice(i, 1);
-            game.score += 30;
-            audio.playBeep(250, 60, 0.15, 'sawtooth', 0.15);
+          // 6. Collisions: Player bullets hitting Bunkers (Iterated backwards to prevent index skips)
+          for (let i = game.bullets.length - 1; i >= 0; i--) {
+            const bullet = game.bullets[i];
+            const hitBunker = game.bunkers.find(b => b.hp > 0 && b.x === bullet.x && b.y === Math.round(bullet.y));
+            if (hitBunker) {
+              hitBunker.hp--;
+              game.bullets.splice(i, 1);
+            }
           }
-        }
 
-        // 6. Collisions: Player bullets hitting Bunkers (Iterated backwards to prevent index skips)
-        for (let i = game.bullets.length - 1; i >= 0; i--) {
-          const bullet = game.bullets[i];
-          const hitBunker = game.bunkers.find(b => b.hp > 0 && b.x === bullet.x && b.y === Math.round(bullet.y));
-          if (hitBunker) {
-            hitBunker.hp--;
-            game.bullets.splice(i, 1);
+          // 7. Collisions: Alien bullets hitting Bunkers (Iterated backwards to prevent index skips)
+          for (let i = game.alienBullets.length - 1; i >= 0; i--) {
+            const bullet = game.alienBullets[i];
+            const hitBunker = game.bunkers.find(b => b.hp > 0 && b.x === bullet.x && b.y === Math.round(bullet.y));
+            if (hitBunker) {
+              hitBunker.hp--;
+              game.alienBullets.splice(i, 1);
+            }
           }
-        }
 
-        // 7. Collisions: Alien bullets hitting Bunkers (Iterated backwards to prevent index skips)
-        for (let i = game.alienBullets.length - 1; i >= 0; i--) {
-          const bullet = game.alienBullets[i];
-          const hitBunker = game.bunkers.find(b => b.hp > 0 && b.x === bullet.x && b.y === Math.round(bullet.y));
-          if (hitBunker) {
-            hitBunker.hp--;
-            game.alienBullets.splice(i, 1);
+          // 8. Collisions: Alien bullets hitting Player (Iterated backwards to prevent index skips)
+          for (let i = game.alienBullets.length - 1; i >= 0; i--) {
+            const bullet = game.alienBullets[i];
+            const isPlayerHit = (bullet.x >= game.playerX && bullet.x <= game.playerX + 4 && Math.round(bullet.y) === 28) ||
+              (bullet.x === game.playerX + 2 && Math.round(bullet.y) === 27);
+            if (isPlayerHit) {
+              game.alienBullets.splice(i, 1);
+              game.gameOver = true;
+              audio.playMelody([
+                { f: 261.63, dur: 0.18, delay: 0.00 },
+                { f: 246.94, dur: 0.18, delay: 0.18 },
+                { f: 233.08, dur: 0.18, delay: 0.36 },
+                { f: 220.00, endF: 60, dur: 0.60, delay: 0.54 }
+              ], 'sawtooth', 0.1);
+            }
           }
-        }
 
-        // 8. Collisions: Alien bullets hitting Player (Iterated backwards to prevent index skips)
-        for (let i = game.alienBullets.length - 1; i >= 0; i--) {
-          const bullet = game.alienBullets[i];
-          const isPlayerHit = (bullet.x >= game.playerX && bullet.x <= game.playerX + 4 && Math.round(bullet.y) === 28) ||
-            (bullet.x === game.playerX + 2 && Math.round(bullet.y) === 27);
-          if (isPlayerHit) {
-            game.alienBullets.splice(i, 1);
+          // 9. Check Aliens landing
+          game.aliens.forEach(al => {
+            if (al.alive && al.y >= 26) {
+              game.gameOver = true;
+              audio.playMelody([
+                { f: 261.63, dur: 0.18, delay: 0.00 },
+                { f: 246.94, dur: 0.18, delay: 0.18 },
+                { f: 233.08, dur: 0.18, delay: 0.36 },
+                { f: 220.00, endF: 60, dur: 0.60, delay: 0.54 }
+              ], 'sawtooth', 0.1);
+            }
+          });
+
+          // 10. Check Win Condition
+          if (!game.aliens.some(al => al.alive)) {
             game.gameOver = true;
+            game.gameWon = true;
             audio.playMelody([
-              { f: 261.63, dur: 0.18, delay: 0.00 },
-              { f: 246.94, dur: 0.18, delay: 0.18 },
-              { f: 233.08, dur: 0.18, delay: 0.36 },
-              { f: 220.00, endF: 60, dur: 0.60, delay: 0.54 }
-            ], 'sawtooth', 0.1);
+              { f: 523.25, dur: 0.08, delay: 0.00 },
+              { f: 659.25, dur: 0.08, delay: 0.08 },
+              { f: 783.99, dur: 0.08, delay: 0.16 },
+              { f: 1046.50, dur: 0.08, delay: 0.24 },
+              { f: 1318.51, dur: 0.40, delay: 0.32 }
+            ], 'square', 0.12);
           }
-        }
 
-        // 9. Check Aliens landing
-        game.aliens.forEach(al => {
-          if (al.alive && al.y >= 26) {
-            game.gameOver = true;
-            audio.playMelody([
-              { f: 261.63, dur: 0.18, delay: 0.00 },
-              { f: 246.94, dur: 0.18, delay: 0.18 },
-              { f: 233.08, dur: 0.18, delay: 0.36 },
-              { f: 220.00, endF: 60, dur: 0.60, delay: 0.54 }
-            ], 'sawtooth', 0.1);
-          }
-        });
-
-        // 10. Check Win Condition
-        if (!game.aliens.some(al => al.alive)) {
-          game.gameOver = true;
-          game.gameWon = true;
-          audio.playMelody([
-            { f: 523.25, dur: 0.08, delay: 0.00 },
-            { f: 659.25, dur: 0.08, delay: 0.08 },
-            { f: 783.99, dur: 0.08, delay: 0.16 },
-            { f: 1046.50, dur: 0.08, delay: 0.24 },
-            { f: 1318.51, dur: 0.40, delay: 0.32 }
-          ], 'square', 0.12);
-        }
-
-        drawInvaders();
-      }, 50);
-    });
-
-    // Cleanup
-    document.removeEventListener('keydown', keyHandler);
-    shell.loginState = 'LOGGED_IN';
+          drawInvaders();
+        }, 50);
+      });
+    } finally {
+      // Cleanup
+      document.removeEventListener('keydown', keyHandler);
+      shell.loginState = 'LOGGED_IN';
+    }
 
     // Print Game Outcome
     if (game.gameWon) {

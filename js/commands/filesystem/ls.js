@@ -25,15 +25,7 @@ export const ls = {
       const fileName = targetPath[targetPath.length - 1];
       shell.print(`<span class="color-file ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
     } else {
-      const rawItems = Object.keys(targetNode);
-      // Filter out duplicate *.symlink files if their base alias exists in targetNode
-      const items = rawItems.filter(name => {
-        if (name.endsWith('.symlink')) {
-          const base = name.slice(0, -8);
-          if (rawItems.includes(base)) return false;
-        }
-        return true;
-      });
+      const items = Object.keys(targetNode);
 
       const targetPathStr = targetPath.join('/');
       const formattedItems = items.map(name => {

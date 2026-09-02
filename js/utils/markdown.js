@@ -1,4 +1,4 @@
-import { resolvePath, getNodeByPath } from '../fs.js?v=0b21cbfb3c';
+import { resolvePath, getNodeByPath } from '../fs.js?v=6cb27313a8';
 
 export function escapeHTML(str) {
   return str
@@ -64,8 +64,15 @@ const getVisibleLength = (htmlStr) => {
 const parseInline = (line, vfs = {}, basePathArr = []) => {
   const sanitized = sanitizeHTML(line);
 
-  let processed = sanitized;
-  processed = processed.replace(/\*\*(.*?)\*\*/g, '<span class="color-accent">$1</span>');
+  // 1. Extract inline code spans first so inner characters (like * or _) are not parsed as markdown
+  const codeTokens = [];
+  let processed = sanitized.replace(/\`([^\`]+)\`/g, (match, codeContent) => {
+    const placeholder = `__CODE_TOKEN_${codeTokens.length}__`;
+    codeTokens.push(`<span class="color-accent">${codeContent}</span>`);
+    return placeholder;
+  });
+
+  // 2. Links
   processed = processed.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, href) => {
     const cleanHref = href.trim();
     if (/^javascript:/i.test(cleanHref)) {
@@ -85,7 +92,15 @@ const parseInline = (line, vfs = {}, basePathArr = []) => {
 
     return `<a href="${cleanHref}" class="color-link" target="_blank">${text}</a>`;
   });
-  processed = processed.replace(/\`(.*?)\`/g, '<span class="color-accent">$1</span>');
+
+  // 3. Bold formatting
+  processed = processed.replace(/\*\*(.*?)\*\*/g, '<span class="color-accent">$1</span>');
+
+  // 4. Restore inline code spans
+  for (let i = 0; i < codeTokens.length; i++) {
+    processed = processed.replace(`__CODE_TOKEN_${i}__`, codeTokens[i]);
+  }
+
   return processed;
 };
 

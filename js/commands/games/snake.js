@@ -1,4 +1,4 @@
-import { audio } from '../../audio.js?v=38beffc128';
+import { audio } from '../../audio.js?v=928da0a483';
 
 export const snake = {
   name: 'snake',
@@ -196,68 +196,69 @@ export const snake = {
       }
     };
 
-    document.addEventListener('keydown', keyHandler);
+    try {
+      document.addEventListener('keydown', keyHandler);
 
-    await new Promise((resolve) => {
-      const loop = setInterval(() => {
-        if (gameState.gameOver || shell.abortSignal) {
-          clearInterval(loop);
-          resolve();
-          return;
-        }
+      await new Promise((resolve) => {
+        const loop = setInterval(() => {
+          if (gameState.gameOver || shell.abortSignal) {
+            clearInterval(loop);
+            resolve();
+            return;
+          }
 
-        if (gameState.inputQueue.length > 0) {
-          gameState.dir = gameState.inputQueue.shift();
-        }
+          if (gameState.inputQueue.length > 0) {
+            gameState.dir = gameState.inputQueue.shift();
+          }
 
-        const head = { ...gameState.snake[0] };
+          const head = { ...gameState.snake[0] };
 
-        // Move head
-        switch (gameState.dir) {
-          case 'UP': head.y--; break;
-          case 'DOWN': head.y++; break;
-          case 'LEFT': head.x--; break;
-          case 'RIGHT': head.x++; break;
-        }
+          // Move head
+          switch (gameState.dir) {
+            case 'UP': head.y--; break;
+            case 'DOWN': head.y++; break;
+            case 'LEFT': head.x--; break;
+            case 'RIGHT': head.x++; break;
+          }
 
-        // Collision check - boundary walls
-        if (head.x < 0 || head.x >= width || head.y < 0 || head.y >= height) {
-          gameState.gameOver = true;
-          audio.playBeep(300, 80, 0.25, 'sawtooth', 0.15);
-          return;
-        }
+          // Collision check - boundary walls
+          if (head.x < 0 || head.x >= width || head.y < 0 || head.y >= height) {
+            gameState.gameOver = true;
+            audio.playBeep(300, 80, 0.25, 'sawtooth', 0.15);
+            return;
+          }
 
-        const eatsFood = (head.x === gameState.food.x && head.y === gameState.food.y);
+          const eatsFood = (head.x === gameState.food.x && head.y === gameState.food.y);
 
-        if (!eatsFood) {
-          // Remove tail before self-collision check so snake can follow its tail
-          gameState.snake.pop();
-        }
+          if (!eatsFood) {
+            // Remove tail before self-collision check so snake can follow its tail
+            gameState.snake.pop();
+          }
 
-        // Collision check - self body
-        if (gameState.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
-          gameState.gameOver = true;
-          audio.playBeep(300, 80, 0.25, 'sawtooth', 0.15);
-          return;
-        }
+          // Collision check - self body
+          if (gameState.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+            gameState.gameOver = true;
+            audio.playBeep(300, 80, 0.25, 'sawtooth', 0.15);
+            return;
+          }
 
-        // Prepend head
-        gameState.snake.unshift(head);
+          // Prepend head
+          gameState.snake.unshift(head);
 
-        // Check if food eaten
-        if (eatsFood) {
-          gameState.score += 10;
-          audio.playBeep(523.25, 1046.50, 0.08, 'triangle', 0.15);
-          generateFood();
-        }
+          // Check if food eaten
+          if (eatsFood) {
+            gameState.score += 10;
+            audio.playBeep(523.25, 1046.50, 0.08, 'triangle', 0.15);
+            generateFood();
+          }
 
-        drawSnake();
-      }, speed);
-    });
-
-    // Cleanup
-    document.removeEventListener('keydown', keyHandler);
-    shell.loginState = 'LOGGED_IN';
+          drawSnake();
+        }, speed);
+      });
+    } finally {
+      document.removeEventListener('keydown', keyHandler);
+      shell.loginState = 'LOGGED_IN';
+    }
 
     // Update high score
     if (gameState.score > highscore) {
