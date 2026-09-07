@@ -42,7 +42,7 @@ const shell = new Shell({
 
 `;
 
-    shell.print(`Arch Linux 6.9.3-arch1-1 (tty1)`, 'color-dim');
+    shell.print(`Archaic Linux 6.9.3-arch4ic1-1 (tty1)`, 'color-dim');
     shell.print(`\n  >>> <span class="blue">Welcome, ${shell.currentUsername}@${shell.hostname}!</span> <<<`, 'color-accent');
     shell.print(asciiArt, 'color-accent motd-ascii-art');
 

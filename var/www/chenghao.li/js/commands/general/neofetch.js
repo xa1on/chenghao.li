@@ -43,7 +43,7 @@ export const neofetch = {
 
     // 3. Count VFS nodes recursively
     const countNodes = (node) => {
-      if (typeof node !== 'object') return 0; // File (parent loop already added 1 for it)
+      if (!node || typeof node !== 'object' || node.symlink !== undefined) return 0;
       let count = 0;
       for (const key of Object.keys(node)) {
         count += 1 + countNodes(node[key]);
@@ -90,9 +90,9 @@ export const neofetch = {
     const stats = [
       `<span class="color-accent red">${shell.currentUsername}</span>@<span class="color-accent">${host}</span>`,
       "-".repeat(`${shell.currentUsername}@${host}`.length),
-      `<span class="red">OS</span>:          Arch Linux x86_64`,
+      `<span class="red">OS</span>:          Archaic Linux x86_64`,
       `<span class="red">Host</span>:        ${host}`,
-      `<span class="red">Kernel</span>:      6.9.3-arch1-1`,
+      `<span class="red">Kernel</span>:      6.9.3-arch4ic1-1`,
       `<span class="red">Uptime</span>:      ${uptimeStr}`,
       `<span class="red">Shell</span>:       ArchaicSh 1.0`,
       `<span class="red">Resolution</span>:  ${window.screen.width}x${window.screen.height}`,

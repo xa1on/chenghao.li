@@ -21,7 +21,7 @@ export const llm = {
     }
 
     // 2. User Confirmation for Model Download/Loading
-    const confirmResponse = await shell.readInput("This command will load a local ~400MB LLM (Qwen 3 0.5B). Proceed? (y/n): ");
+    const confirmResponse = await shell.readInput("This command will load a local ~400MB LLM (Qwen 2.5 0.5B). Proceed? (y/n): ");
     if (confirmResponse === null) {
       shell.print("Operation cancelled.", "color-dim");
       return;

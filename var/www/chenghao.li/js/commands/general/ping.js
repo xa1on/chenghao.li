@@ -13,14 +13,12 @@ export const ping = {
 
     const times = [];
     for (let i = 1; i <= 4; i++) {
-      if (shell.abortSignal) {
-        shell.print('ping: interrupted by user', 'color-dim');
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (shell.abortSignal) {
-        shell.print('ping: interrupted by user', 'color-dim');
-        return;
+      for (let t = 0; t < 10; t++) {
+        if (shell.abortSignal) {
+          shell.print('ping: interrupted by user', 'color-dim');
+          return;
+        }
+        await new Promise(r => setTimeout(r, 100));
       }
       const time = (Math.random() * 30 + 5).toFixed(3);
       times.push(parseFloat(time));
