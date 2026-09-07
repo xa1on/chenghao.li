@@ -251,10 +251,6 @@
   cursor: text;
 }
 
-.char-cell {
-  cursor: text;
-}
-
 .terminal-cursor {
   display: inline-block;
   vertical-align: text-bottom;

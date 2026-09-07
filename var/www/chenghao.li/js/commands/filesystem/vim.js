@@ -315,7 +315,7 @@ class VimEditor extends BaseEditor {
 
   escapeLine(lineStr, lineStartIdx, selStart, selEnd) {
     if (this.mode !== 'VISUAL') {
-      return super.escapeLine(lineStr, lineStartIdx, selStart, selEnd);
+      return super.escapeLine(lineStr, lineStartIdx, selStart);
     }
 
     const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

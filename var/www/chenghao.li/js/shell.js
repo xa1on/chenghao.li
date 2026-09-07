@@ -144,12 +144,23 @@ export class Shell {
     if (this.isMounted) return;
     this.isMounted = true;
 
-    // Reload and replay boot if user navigates history
-    window.addEventListener('popstate', () => {
-      window.location.reload();
-    });
-    window.addEventListener('hashchange', () => {
-      window.location.reload();
+    // Handle deep links when user navigates history
+    window.addEventListener('popstate', async () => {
+      if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.isExecutingCommand) return;
+      const { initialPath, initialCommand } = this.getInitialDeepLink();
+      if (initialPath && this.fileSystem) {
+        const resolved = this.fileSystem.resolvePath(this.currentPath, initialPath);
+        if (resolved !== null) {
+          const targetObj = this.fileSystem.getNodeByPath(resolved);
+          if (typeof targetObj === 'object') {
+            this.currentPath = resolved;
+            this.updatePrompt();
+          }
+        }
+      }
+      if (initialCommand) {
+        await this.handleInputSubmit(initialCommand);
+      }
     });
 
     // Background preloading of lazy commands metadata
@@ -247,21 +258,12 @@ export class Shell {
     });
 
     this.inputLine.addEventListener('click', (e) => {
-      const charCell = e.target.closest('.char-cell');
-      if (charCell) {
+      const isInteractive = e.target.closest('a') || e.target.closest('button') || e.target.closest('.cmd-link');
+      if (!isInteractive) {
         e.stopPropagation();
-        const idx = parseInt(charCell.getAttribute('data-idx'), 10);
-        this.input.selectionStart = this.input.selectionEnd = idx;
+        this.input.selectionStart = this.input.selectionEnd = this.input.value.length;
         syncCursor();
         this.focus();
-      } else {
-        const isInteractive = e.target.closest('a') || e.target.closest('button') || e.target.closest('.cmd-link');
-        if (!isInteractive) {
-          e.stopPropagation();
-          this.input.selectionStart = this.input.selectionEnd = this.input.value.length;
-          syncCursor();
-          this.focus();
-        }
       }
     });
 
@@ -350,7 +352,7 @@ export class Shell {
     // Delegate click handling across document
     document.addEventListener('click', async (e) => {
       const target = e.target;
-      const isInteractive = target.closest('a, button, input, .cmd-link, .ls-item, .contact-link, .char-cell');
+      const isInteractive = target.closest('a, button, input, .cmd-link, .ls-item, .contact-link');
 
       if (isInteractive) {
         audio.playLinkClick();
@@ -418,11 +420,8 @@ export class Shell {
     }
 
     const selStart = text === this.input.value ? (this.input.selectionStart || 0) : text.length;
-    const wrapCharacters = (str, startIdx) => {
-      return str.split('').map((char, i) => {
-        const displayChar = char === '\n' ? '\n' : (char === ' ' ? '\u00A0' : char);
-        return `<span class="char-cell" data-idx="${startIdx + i}">${escapeHTML(displayChar)}</span>`;
-      }).join('');
+    const formatSegment = (str) => {
+      return escapeHTML(str).replace(/ /g, '\u00A0');
     };
 
     const getCursorHTML = (char) => {
@@ -437,7 +436,7 @@ export class Shell {
       const left = text.slice(0, selStart);
       const charUnder = text.slice(selStart, selStart + 1);
       const right = text.slice(selStart + 1);
-      this.inputDisplay.innerHTML = wrapCharacters(left, 0) + getCursorHTML(charUnder) + wrapCharacters(right, selStart + 1);
+      this.inputDisplay.innerHTML = formatSegment(left) + getCursorHTML(charUnder) + formatSegment(right);
     } else {
       // Render standard text and dim comments, embedding cursor appropriately
       const commentIdx = findCommentIndex(text);
@@ -449,19 +448,19 @@ export class Shell {
           const left = commandPart.slice(0, selStart);
           const charUnder = commandPart.slice(selStart, selStart + 1);
           const right = commandPart.slice(selStart + 1);
-          this.inputDisplay.innerHTML = wrapCharacters(left, 0) + getCursorHTML(charUnder) + wrapCharacters(right, selStart + 1) + `<span class="color-dim">${wrapCharacters(commentPart, commentIdx)}</span>`;
+          this.inputDisplay.innerHTML = formatSegment(left) + getCursorHTML(charUnder) + formatSegment(right) + `<span class="color-dim">${formatSegment(commentPart)}</span>`;
         } else {
           const localSel = selStart - commentIdx;
           const left = commentPart.slice(0, localSel);
           const charUnder = commentPart.slice(localSel, localSel + 1);
           const right = commentPart.slice(localSel + 1);
-          this.inputDisplay.innerHTML = wrapCharacters(commandPart, 0) + `<span class="color-dim">${wrapCharacters(left, commentIdx)}${getCursorHTML(charUnder)}${wrapCharacters(right, selStart + 1)}</span>`;
+          this.inputDisplay.innerHTML = formatSegment(commandPart) + `<span class="color-dim">${formatSegment(left)}${getCursorHTML(charUnder)}${formatSegment(right)}</span>`;
         }
       } else {
         const left = text.slice(0, selStart);
         const charUnder = text.slice(selStart, selStart + 1);
         const right = text.slice(selStart + 1);
-        this.inputDisplay.innerHTML = wrapCharacters(left, 0) + getCursorHTML(charUnder) + wrapCharacters(right, selStart + 1);
+        this.inputDisplay.innerHTML = formatSegment(left) + getCursorHTML(charUnder) + formatSegment(right);
       }
     }
 

@@ -523,7 +523,7 @@ class NanoEditor extends BaseEditor {
       const lineText = rawLines[i];
       const isCurrent = i === curLine;
       const lineNum = String(i + 1).padStart(3, ' ');
-      const escaped = this.escapeLine(lineText, currentIdx, selStart, selEnd);
+      const escaped = this.escapeLine(lineText, currentIdx, selStart);
       html += `<div class="nano-line ${isCurrent ? 'nano-line-active' : ''}"><span class="color-dim">${lineNum} │ </span>${escaped}</div>`;
       currentIdx += lineText.length + 1;
     }
