@@ -297,18 +297,6 @@
   }
 }
 
-@keyframes blink {
-
-  from,
-  to {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0;
-  }
-}
-
 /* Hidden Real Input Field */
 #terminal-input {
   position: absolute;
