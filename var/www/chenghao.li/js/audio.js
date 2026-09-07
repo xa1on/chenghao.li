@@ -13,22 +13,24 @@ class AudioManager {
     this.humVolume = 0.04; // Track hum level (booting vs active)
 
     // Load initial preference (default to true)
-    this.enabled = localStorage.getItem('sound_enabled') !== 'false';
+    this.enabled = typeof localStorage !== 'undefined' ? localStorage.getItem('sound_enabled') !== 'false' : true;
 
     // Auto-resume AudioContext on first user interaction
-    const resumeOnGesture = () => {
-      this.ensureContext();
-      if (this.ctx && this.ctx.state === 'running') {
-        document.removeEventListener('click', resumeOnGesture, true);
-        document.removeEventListener('keydown', resumeOnGesture, true);
-      }
-    };
-    document.addEventListener('click', resumeOnGesture, { capture: true, passive: true });
-    document.addEventListener('keydown', resumeOnGesture, { capture: true, passive: true });
+    if (typeof document !== 'undefined') {
+      const resumeOnGesture = () => {
+        this.ensureContext();
+        if (this.ctx && this.ctx.state === 'running') {
+          document.removeEventListener('click', resumeOnGesture, true);
+          document.removeEventListener('keydown', resumeOnGesture, true);
+        }
+      };
+      document.addEventListener('click', resumeOnGesture, { capture: true, passive: true });
+      document.addEventListener('keydown', resumeOnGesture, { capture: true, passive: true });
+    }
   }
 
   init() {
-    if (this.ctx) return;
+    if (this.ctx || typeof window === 'undefined') return;
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
     if (!AudioContextClass) return;
 
@@ -41,7 +43,9 @@ class AudioManager {
   setEnabled(enabled) {
     if (this.enabled === enabled) return;
     this.enabled = enabled;
-    localStorage.setItem('sound_enabled', enabled ? 'true' : 'false');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('sound_enabled', enabled ? 'true' : 'false');
+    }
 
     if (this.mainGain && this.ctx) {
       const now = this.ctx.currentTime;

@@ -134,14 +134,27 @@ export class FileSystem {
 
     // Load user filesystem from localStorage
     try {
-      const saved = localStorage.getItem('vfs_user_tree');
-      if (saved) {
-        this.userTree = JSON.parse(saved);
-        deepMerge(this.root, this.userTree);
+      if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem('vfs_user_tree');
+        if (saved) {
+          this.userTree = JSON.parse(saved);
+          deepMerge(this.root, this.userTree);
+        }
       }
     } catch (e) {
       console.error('Failed to load user filesystem from localStorage', e);
     }
+  }
+
+  ensureUserParent(parentPath) {
+    let userParent = this.userTree;
+    for (const part of parentPath) {
+      if (!userParent[part] || typeof userParent[part] !== 'object') {
+        userParent[part] = {};
+      }
+      userParent = userParent[part];
+    }
+    return userParent;
   }
 
   isBuiltInPath(pathArr) {
@@ -197,27 +210,11 @@ export class FileSystem {
       const linkName = fileName.slice(0, -8);
       const symlinkObj = { symlink: content.trim() };
       rootParent[linkName] = symlinkObj;
-
-      let userParent = this.userTree;
-      for (const part of parentPath) {
-        if (!userParent[part] || typeof userParent[part] !== 'object') {
-          userParent[part] = {};
-        }
-        userParent = userParent[part];
-      }
-      userParent[linkName] = symlinkObj;
+      this.ensureUserParent(parentPath)[linkName] = symlinkObj;
     } else {
       // Standard file update
       rootParent[fileName] = content;
-
-      let userParent = this.userTree;
-      for (const part of parentPath) {
-        if (!userParent[part] || typeof userParent[part] !== 'object') {
-          userParent[part] = {};
-        }
-        userParent = userParent[part];
-      }
-      userParent[fileName] = content;
+      this.ensureUserParent(parentPath)[fileName] = content;
     }
 
     this.saveUserFS();
@@ -244,15 +241,7 @@ export class FileSystem {
 
     const symlinkObj = { symlink: targetStr };
     rootParent[linkName] = symlinkObj;
-
-    let userParent = this.userTree;
-    for (const part of parentPath) {
-      if (!userParent[part] || typeof userParent[part] !== 'object') {
-        userParent[part] = {};
-      }
-      userParent = userParent[part];
-    }
-    userParent[linkName] = symlinkObj;
+    this.ensureUserParent(parentPath)[linkName] = symlinkObj;
 
     this.saveUserFS();
   }
@@ -282,16 +271,7 @@ export class FileSystem {
 
     // Update in-memory root tree
     rootParent[dirName] = {};
-
-    // Update userTree
-    let userParent = this.userTree;
-    for (const part of parentPath) {
-      if (!userParent[part] || typeof userParent[part] !== 'object') {
-        userParent[part] = {};
-      }
-      userParent = userParent[part];
-    }
-    userParent[dirName] = {};
+    this.ensureUserParent(parentPath)[dirName] = {};
 
     this.saveUserFS();
   }
@@ -352,7 +332,9 @@ export class FileSystem {
 
   saveUserFS() {
     try {
-      localStorage.setItem('vfs_user_tree', JSON.stringify(this.userTree));
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('vfs_user_tree', JSON.stringify(this.userTree));
+      }
     } catch (e) {
       console.error('Failed to save user filesystem to localStorage', e);
     }

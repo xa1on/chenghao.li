@@ -14,20 +14,6 @@ const {
   WEB_ROOT
 } = config;
 
-// Mock browser globals for Node.js import evaluation
-global.localStorage = {
-  getItem: () => null,
-  setItem: () => null
-};
-global.document = {
-  addEventListener: () => null,
-  removeEventListener: () => null
-};
-global.window = {
-  AudioContext: class {},
-  webkitAudioContext: class {}
-};
-
 const IGNORED_NAMES = new Set([
   '.git',
   '.github',
