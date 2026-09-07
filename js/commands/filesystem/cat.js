@@ -30,7 +30,7 @@ export const cat = {
 
       if (isImage) {
         const hash = shell.fileSystem.isBuiltInPath(resolved) ? shell.fileSystem.getNodeByPath(resolved) : '';
-        const filePath = resolved.join('/') + (typeof hash === 'string' && hash && hash !== 'core' ? '?v=' + hash : '');
+        const filePath = resolved.join('/') + (typeof hash === 'string' && hash && hash !== 'core' ? '');
         shell.print(`<img src="${filePath}" class="terminal-image" alt="${shell.escapeHTML(fileName)}">`);
         return;
       }

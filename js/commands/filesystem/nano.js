@@ -1,5 +1,5 @@
-import { BaseEditor, runEditor } from '../../utils/editor.js?v=f953213602';
-import { audio } from '../../audio.js?v=928da0a483';
+import { BaseEditor, runEditor } from '../../utils/editor.js';
+import { audio } from '../../audio.js';
 
 export const nano = {
   name: 'nano',

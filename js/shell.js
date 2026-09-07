@@ -1,5 +1,5 @@
-import { audio } from './audio.js?v=928da0a483';
-import { parseMarkdown, escapeHTML } from './utils/markdown.js?v=e2a32a0c08';
+import { audio } from './audio.js';
+import { parseMarkdown, escapeHTML } from './utils/markdown.js';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;
@@ -834,7 +834,7 @@ export class Shell {
         sessionStorage.removeItem('spa_redirect');
         rawPath = redirect;
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. If no redirect, check URL pathname, search query, or hash
     if (!rawPath && typeof window !== 'undefined') {
@@ -899,7 +899,7 @@ export class Shell {
         let trimmedCmd = cmdParam.trim();
         // Unwrap outer matching quotes if present
         if ((trimmedCmd.startsWith('"') && trimmedCmd.endsWith('"')) ||
-            (trimmedCmd.startsWith("'") && trimmedCmd.endsWith("'"))) {
+          (trimmedCmd.startsWith("'") && trimmedCmd.endsWith("'"))) {
           trimmedCmd = trimmedCmd.slice(1, -1);
         }
         // Unescape escaped quotes \" -> "
@@ -958,7 +958,7 @@ export class Shell {
       if (window.location.pathname + window.location.search + window.location.hash !== newUrl) {
         window.history.replaceState(null, '', newUrl);
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async startConnection() {

@@ -1,4 +1,4 @@
-import { buddies as buddiesList } from '../../buddies.js?v=72a3cbbf99';
+import { buddies as buddiesList } from '../../buddies.js';
 
 export const buddies = {
   name: 'buddies',

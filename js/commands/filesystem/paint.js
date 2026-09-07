@@ -1,4 +1,4 @@
-import { audio } from '../../audio.js?v=928da0a483';
+import { audio } from '../../audio.js';
 
 export const paint = {
   name: 'paint',
@@ -521,9 +521,9 @@ class PaintEditor {
       const targetColor = this.cells[y][x].color;
       const targetBg = this.cells[y][x].background;
 
-      if (targetChar === this.activeChar && 
-          targetColor === (this.isColorSupported ? this.activeColor : 'white') &&
-          targetBg === (this.isColorSupported ? this.activeBgColor : 'none')) {
+      if (targetChar === this.activeChar &&
+        targetColor === (this.isColorSupported ? this.activeColor : 'white') &&
+        targetBg === (this.isColorSupported ? this.activeBgColor : 'none')) {
         return;
       }
 
@@ -624,7 +624,7 @@ class PaintEditor {
     const isCursor = (x === this.cursorX && y === this.cursorY);
     const classes = ['paint-cell'];
     if (isCursor) classes.push('paint-cursor');
-    
+
     const colorClass = this.isColorSupported ? cell.color : 'white';
     if (colorClass) {
       colorClass.split(' ').forEach(cls => classes.push(cls));
@@ -757,7 +757,7 @@ class PaintEditor {
       const el = this.blockDOMs[i];
       if (!el) continue;
       const isActive = this.activeChar === b;
-      const displayLabel = isActive ? `[${i+1}:${b}]` : `${i+1}:${b}`;
+      const displayLabel = isActive ? `[${i + 1}:${b}]` : `${i + 1}:${b}`;
 
       if (el.textContent !== displayLabel) {
         el.textContent = displayLabel;

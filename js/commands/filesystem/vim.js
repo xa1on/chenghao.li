@@ -1,5 +1,5 @@
-import { BaseEditor, runEditor } from '../../utils/editor.js?v=f953213602';
-import { audio } from '../../audio.js?v=928da0a483';
+import { BaseEditor, runEditor } from '../../utils/editor.js';
+import { audio } from '../../audio.js';
 
 export const vim = {
   name: 'vim',
@@ -236,7 +236,7 @@ class VimEditor extends BaseEditor {
     const { rawLines } = this.getLinesAndCursor();
     const targetLine = Math.max(0, Math.min(rawLines.length - 1, lineIndex));
     const lineText = rawLines[targetLine] || '';
-    
+
     let col = 0;
     while (col < lineText.length && /\s/.test(lineText[col])) {
       col++;
@@ -244,13 +244,13 @@ class VimEditor extends BaseEditor {
     if (col >= lineText.length) {
       col = Math.max(0, lineText.length - 1);
     }
-    
+
     let idx = 0;
     for (let i = 0; i < targetLine; i++) {
       idx += rawLines[i].length + 1;
     }
     idx += col;
-    
+
     this.textarea.selectionStart = this.textarea.selectionEnd = idx;
   }
 
@@ -317,52 +317,52 @@ class VimEditor extends BaseEditor {
     if (this.mode !== 'VISUAL') {
       return super.escapeLine(lineStr, lineStartIdx, selStart, selEnd);
     }
-    
+
     const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const lineEndIdx = lineStartIdx + lineStr.length;
-    
+
     const s = Math.min(selStart, selEnd);
     const e = Math.max(selStart, selEnd);
-    
+
     const cursorIdx = this.visualCursor;
     if (cursorIdx === lineStartIdx && lineStartIdx === lineEndIdx) {
       return `<span class="terminal-cursor"> </span>`;
     }
-    
+
     const overlapStart = Math.max(s, lineStartIdx);
     const overlapEnd = Math.min(e, lineEndIdx);
-    
+
     if (overlapStart >= overlapEnd) {
       return escape(lineStr);
     }
-    
+
     const relStart = overlapStart - lineStartIdx;
     const relEnd = overlapEnd - lineStartIdx;
-    
+
     const before = lineStr.slice(0, relStart);
     const selected = lineStr.slice(relStart, relEnd);
     const after = lineStr.slice(relEnd);
-    
+
     if (cursorIdx === lineEndIdx) {
       if (e >= lineEndIdx) {
         return escape(before) + `<span class="terminal-selection">${escape(selected)}</span>` + `<span class="terminal-cursor"> </span>` + escape(after);
       }
     }
-    
+
     if (cursorIdx >= lineStartIdx && cursorIdx < lineEndIdx) {
       const relCursor = cursorIdx - lineStartIdx;
       const cursorColInSelected = relCursor - relStart;
       const selBeforeCursor = selected.slice(0, cursorColInSelected);
       const charAtCursor = selected.slice(cursorColInSelected, cursorColInSelected + 1) || ' ';
       const selAfterCursor = selected.slice(cursorColInSelected + 1);
-      
+
       return escape(before) +
         `<span class="terminal-selection">${escape(selBeforeCursor)}</span>` +
         `<span class="terminal-cursor">${escape(charAtCursor)}</span>` +
         `<span class="terminal-selection">${escape(selAfterCursor)}</span>` +
         escape(after);
     }
-    
+
     return escape(before) + `<span class="terminal-selection">${escape(selected)}</span>` + escape(after);
   }
 

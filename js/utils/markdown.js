@@ -1,4 +1,4 @@
-import { resolvePath, getNodeByPath } from '../fs.js?v=99f0c1d3f5';
+import { resolvePath, getNodeByPath } from '../fs.js';
 
 export function escapeHTML(str) {
   return str
