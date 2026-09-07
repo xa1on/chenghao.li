@@ -34,6 +34,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
+      - name: Generate Virtual File System
+        run: node scripts/generate_vfs.js
       - name: Run Cache Buster
         run: node scripts/cache_buster.js
       - name: Setup Pages

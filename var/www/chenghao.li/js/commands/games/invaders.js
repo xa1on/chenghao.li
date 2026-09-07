@@ -15,7 +15,7 @@ export const invaders = {
     let highscore = 0;
     try {
       highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
-    } catch (_) {}
+    } catch (_) { }
 
     // Prompt for difficulty if not provided or invalid
     while (diffText !== 'easy' && diffText !== 'medium' && diffText !== 'hard' && diffText !== '1' && diffText !== '2' && diffText !== '3') {
@@ -409,7 +409,7 @@ export const invaders = {
       highscore = game.score;
       try {
         localStorage.setItem(highscoreKey, highscore.toString());
-      } catch (_) {}
+      } catch (_) { }
       shell.print(`NEW HIGH SCORE: ${highscore}!`, 'color-accent');
     } else {
       shell.print(`Final Score: ${game.score}`, 'color-blue');

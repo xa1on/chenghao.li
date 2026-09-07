@@ -45,7 +45,7 @@ export const minesweeper = {
         bestEasy = localStorage.getItem('minesweeper_best_easy') || 'N/A';
         bestMedium = localStorage.getItem('minesweeper_best_medium') || 'N/A';
         bestHard = localStorage.getItem('minesweeper_best_hard') || 'N/A';
-      } catch (_) {}
+      } catch (_) { }
       shell.print(`--- MINESWEEPER ---`);
       shell.print(`Best Times:`);
       shell.print(`  Easy:   ${bestEasy}s`);
@@ -212,11 +212,11 @@ export const minesweeper = {
             let previousBest = null;
             try {
               previousBest = localStorage.getItem(bestTimeKey);
-            } catch (_) {}
+            } catch (_) { }
             if (!previousBest || elapsedSeconds < parseInt(previousBest, 10)) {
               try {
                 localStorage.setItem(bestTimeKey, elapsedSeconds.toString());
-              } catch (_) {}
+              } catch (_) { }
               shell.print(`NEW BEST TIME for ${difficultyPreset.toUpperCase()}: ${elapsedSeconds} seconds!`, 'color-accent');
             }
           }

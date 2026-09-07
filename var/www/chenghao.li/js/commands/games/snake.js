@@ -15,7 +15,7 @@ export const snake = {
     let highscore = 0;
     try {
       highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
-    } catch (_) {}
+    } catch (_) { }
 
     // Prompt for difficulty if not provided or invalid
     while (diffText !== 'easy' && diffText !== 'medium' && diffText !== 'hard' && diffText !== '1' && diffText !== '2' && diffText !== '3') {
@@ -268,7 +268,7 @@ export const snake = {
       highscore = gameState.score;
       try {
         localStorage.setItem(highscoreKey, highscore.toString());
-      } catch (_) {}
+      } catch (_) { }
       shell.print(`NEW HIGH SCORE! Score: ${gameState.score}`, 'color-green');
     } else if (shell.abortSignal) {
       shell.print('Snake game interrupted.', 'color-dim');

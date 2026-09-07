@@ -222,6 +222,13 @@ async function runCacheBuster() {
     files.push(BUDDIES_PATH);
   }
 
+  // Ensure GEN_DIR and BUDDIES_PATH exist on disk so dynamic command imports (e.g. buddies.js) resolve
+  if (!fs.existsSync(GEN_DIR)) {
+    fs.mkdirSync(GEN_DIR, { recursive: true });
+  }
+  const initialBuddiesContent = generateBuddiesListContent();
+  fs.writeFileSync(BUDDIES_PATH, initialBuddiesContent, 'utf8');
+
   // Initialize file hashes with raw contents
   const fileHashes = {};
   const fileContents = {};

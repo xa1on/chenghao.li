@@ -47,7 +47,9 @@ const shell = new Shell({
     shell.print(asciiArt, 'color-accent motd-ascii-art');
 
     // Print buddy box using decoupled command
-    await shell.commands.buddies.run([], shell);
+    if (shell.commands.buddies) {
+      await shell.commands.buddies.run([], shell);
+    }
 
     shell.print(`
 System information at ${currentTimestamp}:
