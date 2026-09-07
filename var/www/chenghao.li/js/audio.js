@@ -7,13 +7,19 @@ class AudioManager {
     this.humOsc1 = null;
     this.humOsc2 = null;
     this.humLfo = null;
+    this.humLfoGain = null;
+    this.humFilter = null;
     this.humGain = null;
     this.humStopTimeout = null;
     this.isHumming = false;
     this.humVolume = 0.04; // Track hum level (booting vs active)
 
     // Load initial preference (default to true)
-    this.enabled = typeof localStorage !== 'undefined' ? localStorage.getItem('sound_enabled') !== 'false' : true;
+    try {
+      this.enabled = typeof localStorage !== 'undefined' ? localStorage.getItem('sound_enabled') !== 'false' : true;
+    } catch (_) {
+      this.enabled = true;
+    }
 
     // Auto-resume AudioContext on first user interaction
     if (typeof document !== 'undefined') {
@@ -43,9 +49,11 @@ class AudioManager {
   setEnabled(enabled) {
     if (this.enabled === enabled) return;
     this.enabled = enabled;
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('sound_enabled', enabled ? 'true' : 'false');
-    }
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('sound_enabled', enabled ? 'true' : 'false');
+      }
+    } catch (_) {}
 
     if (this.mainGain && this.ctx) {
       const now = this.ctx.currentTime;
@@ -169,8 +177,7 @@ class AudioManager {
       this.humVolume = vol;
     }
     if (this.humStopTimeout) {
-      clearTimeout(this.humStopTimeout);
-      this.humStopTimeout = null;
+      this.stopHum(true);
     }
     if (!this.enabled) return;
     this.ensureContext();
@@ -194,20 +201,20 @@ class AudioManager {
 
     // Tremolo LFO to add warm fluctuation
     this.humLfo = this.ctx.createOscillator();
-    const lfoGain = this.ctx.createGain();
+    this.humLfoGain = this.ctx.createGain();
     this.humLfo.frequency.value = 8; // 8Hz modulation
-    lfoGain.gain.value = 0.008;
+    this.humLfoGain.gain.value = 0.008;
 
-    this.humLfo.connect(lfoGain);
-    lfoGain.connect(this.humGain.gain);
+    this.humLfo.connect(this.humLfoGain);
+    this.humLfoGain.connect(this.humGain.gain);
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(150, now);
+    this.humFilter = this.ctx.createBiquadFilter();
+    this.humFilter.type = 'lowpass';
+    this.humFilter.frequency.setValueAtTime(150, now);
 
-    this.humOsc1.connect(filter);
-    this.humOsc2.connect(filter);
-    filter.connect(this.humGain);
+    this.humOsc1.connect(this.humFilter);
+    this.humOsc2.connect(this.humFilter);
+    this.humFilter.connect(this.humGain);
     this.humGain.connect(this.mainGain);
 
     this.humOsc1.start(now);
@@ -243,19 +250,17 @@ class AudioManager {
     const osc1 = this.humOsc1;
     const osc2 = this.humOsc2;
     const lfo = this.humLfo;
+    const lfoGain = this.humLfoGain;
+    const filter = this.humFilter;
 
     const doStop = () => {
       try {
-        osc1.stop();
-        osc2.stop();
-        lfo.stop();
-
-        osc1.disconnect();
-        osc2.disconnect();
-        lfo.disconnect();
-        if (gainNode) {
-          gainNode.disconnect();
-        }
+        if (osc1) { osc1.stop(); osc1.disconnect(); }
+        if (osc2) { osc2.stop(); osc2.disconnect(); }
+        if (lfo) { lfo.stop(); lfo.disconnect(); }
+        if (lfoGain) lfoGain.disconnect();
+        if (filter) filter.disconnect();
+        if (gainNode) gainNode.disconnect();
       } catch (e) {
         // Safe check in case context closed or already stopped
       }
@@ -273,6 +278,8 @@ class AudioManager {
     this.humOsc1 = null;
     this.humOsc2 = null;
     this.humLfo = null;
+    this.humLfoGain = null;
+    this.humFilter = null;
     this.humGain = null;
   }
 

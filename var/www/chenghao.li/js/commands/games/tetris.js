@@ -11,7 +11,10 @@ export const tetris = {
     shell.loginState = 'GAME';
 
     const highscoreKey = 'tetris_highscore';
-    let highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
+    let highscore = 0;
+    try {
+      highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
+    } catch (_) {}
 
     return new Promise((resolve) => {
 
@@ -523,7 +526,9 @@ export const tetris = {
           shell.print('Tetris interrupted.', 'color-dim');
         } else {
           if (score > highscore) {
-            localStorage.setItem(highscoreKey, score.toString());
+            try {
+              localStorage.setItem(highscoreKey, score.toString());
+            } catch (_) {}
             shell.print('NEW HIGH SCORE!', 'color-green');
           } else {
             shell.print('--- GAME OVER ---', 'color-error');

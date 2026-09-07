@@ -627,7 +627,7 @@ export class Shell {
       }
 
       // Intercept -h or --help to display detailed command help
-      if (args.includes('-h') || args.includes('--help')) {
+      if (args.length === 1 && (args[0] === '-h' || args[0] === '--help')) {
         await this.commands.help.run([command], this);
         return;
       }
@@ -689,7 +689,6 @@ export class Shell {
           this.updateInputDisplay(this.input.value);
         } else {
           this.print(matches.join('    '), 'color-accent');
-          this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
         }
       }
     } else {
@@ -715,7 +714,6 @@ export class Shell {
             this.updateInputDisplay(this.input.value);
           } else {
             this.print(matches.join('    '), 'color-accent');
-            this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
           }
         }
         return;
@@ -785,7 +783,6 @@ export class Shell {
             return isDirNode ? `<span class="color-dir">${matchedName}/</span>` : `<span class="color-file">${matchedName}</span>`;
           });
           this.print(formattedMatches.join('    '));
-          this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
         }
       }
     }
@@ -983,8 +980,7 @@ export class Shell {
               newUrl += `?cat=${fileTarget}`;
             }
           } else {
-            const escapedCmd = trimmedCmd.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-            newUrl += `?cmd="${escapedCmd}"`;
+            newUrl += `?cmd=${encodeURIComponent(trimmedCmd)}`;
           }
         }
       }

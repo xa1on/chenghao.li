@@ -16,6 +16,9 @@ export function sanitizeHTML(str) {
   escaped = escaped.replace(/&lt;span class=(?:&quot;|&#039;)([a-zA-Z0-9_\-\s]+)(?:&quot;|&#039;)&gt;/g, '<span class="$1">');
   escaped = escaped.replace(/&lt;\/span&gt;/g, '</span>');
 
+  // Restore line breaks
+  escaped = escaped.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+
   return escaped;
 }
 
@@ -67,7 +70,7 @@ const parseInline = (line, vfs = {}, basePathArr = []) => {
 
   // 4. Restore inline code spans
   for (let i = 0; i < codeTokens.length; i++) {
-    processed = processed.replace(`__CODE_TOKEN_${i}__`, codeTokens[i]);
+    processed = processed.replace(`__CODE_TOKEN_${i}__`, () => codeTokens[i]);
   }
 
   return processed;

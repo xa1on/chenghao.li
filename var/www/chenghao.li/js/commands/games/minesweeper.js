@@ -40,11 +40,17 @@ export const minesweeper = {
 
     // Fallback to menu prompt if invalid/missing
     while (!cols) {
+      let bestEasy = 'N/A', bestMedium = 'N/A', bestHard = 'N/A';
+      try {
+        bestEasy = localStorage.getItem('minesweeper_best_easy') || 'N/A';
+        bestMedium = localStorage.getItem('minesweeper_best_medium') || 'N/A';
+        bestHard = localStorage.getItem('minesweeper_best_hard') || 'N/A';
+      } catch (_) {}
       shell.print(`--- MINESWEEPER ---`);
       shell.print(`Best Times:`);
-      shell.print(`  Easy:   ${localStorage.getItem('minesweeper_best_easy') || 'N/A'}s`);
-      shell.print(`  Medium: ${localStorage.getItem('minesweeper_best_medium') || 'N/A'}s`);
-      shell.print(`  Hard:   ${localStorage.getItem('minesweeper_best_hard') || 'N/A'}s`);
+      shell.print(`  Easy:   ${bestEasy}s`);
+      shell.print(`  Medium: ${bestMedium}s`);
+      shell.print(`  Hard:   ${bestHard}s`);
       shell.print(`Select difficulty:\n  [1] Easy (9x9, 10 mines)\n  [2] Medium (16x16, 40 mines)\n  [3] Hard (30x16, 99 mines)`);
       const response = await shell.readInput('Choose difficulty (1-3): ');
       if (response === null) {
@@ -203,9 +209,14 @@ export const minesweeper = {
 
           if (difficultyPreset && difficultyPreset !== 'custom') {
             const bestTimeKey = `minesweeper_best_${difficultyPreset}`;
-            const previousBest = localStorage.getItem(bestTimeKey);
+            let previousBest = null;
+            try {
+              previousBest = localStorage.getItem(bestTimeKey);
+            } catch (_) {}
             if (!previousBest || elapsedSeconds < parseInt(previousBest, 10)) {
-              localStorage.setItem(bestTimeKey, elapsedSeconds.toString());
+              try {
+                localStorage.setItem(bestTimeKey, elapsedSeconds.toString());
+              } catch (_) {}
               shell.print(`NEW BEST TIME for ${difficultyPreset.toUpperCase()}: ${elapsedSeconds} seconds!`, 'color-accent');
             }
           }

@@ -12,7 +12,10 @@ export const invaders = {
     let diffText = args.length > 0 ? args[0].toLowerCase() : '';
 
     const highscoreKey = 'invaders_highscore';
-    let highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
+    let highscore = 0;
+    try {
+      highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
+    } catch (_) {}
 
     // Prompt for difficulty if not provided or invalid
     while (diffText !== 'easy' && diffText !== 'medium' && diffText !== 'hard' && diffText !== '1' && diffText !== '2' && diffText !== '3') {
@@ -404,7 +407,9 @@ export const invaders = {
     // High Score updating
     if (game.score > highscore) {
       highscore = game.score;
-      localStorage.setItem(highscoreKey, highscore.toString());
+      try {
+        localStorage.setItem(highscoreKey, highscore.toString());
+      } catch (_) {}
       shell.print(`NEW HIGH SCORE: ${highscore}!`, 'color-accent');
     } else {
       shell.print(`Final Score: ${game.score}`, 'color-blue');
