@@ -201,9 +201,6 @@ export const sokoban = {
 
       const cleanup = () => {
         document.removeEventListener('keydown', keyHandler);
-        if (abortCheckInterval) {
-          clearInterval(abortCheckInterval);
-        }
         shell.loginState = 'LOGGED_IN';
       };
 
@@ -336,7 +333,7 @@ export const sokoban = {
           e.preventDefault();
         }
 
-        if (key === 'q') {
+        if (key === 'q' || (e.ctrlKey && key === 'c')) {
           e.preventDefault();
           quitGame = true;
           finishGame();
@@ -367,14 +364,6 @@ export const sokoban = {
       };
 
       document.addEventListener('keydown', keyHandler);
-
-      // Setup lightweight 200ms check for Ctrl+C / abortSignal
-      abortCheckInterval = setInterval(() => {
-        if (shell.abortSignal) {
-          finishGame();
-        }
-      }, 200);
-
       drawSokoban();
     });
   }

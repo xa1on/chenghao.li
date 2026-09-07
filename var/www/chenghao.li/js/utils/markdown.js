@@ -9,42 +9,11 @@ export function escapeHTML(str) {
     .replace(/'/g, '&#039;');
 }
 
-const ALLOWED_CLASSES = [
-  'blue',
-  'red',
-  'green',
-  'yellow',
-  'cyan',
-  'magenta',
-  'white',
-  'color-text',
-  'color-dir',
-  'color-file',
-  'color-link',
-  'color-error',
-  'color-accent',
-  'color-dim',
-  'blue-color',
-  'green-color',
-  'red-color',
-  'yellow-color',
-  'cyan-color',
-  'magenta-color',
-  'white-color'
-];
-
 export function sanitizeHTML(str) {
   let escaped = escapeHTML(str);
 
-  // Restore allowed span tags
-  escaped = escaped.replace(/&lt;span class=&quot;([a-zA-Z\-]+)&quot;&gt;/g, (match, className) => {
-    if (ALLOWED_CLASSES.includes(className)) {
-      return `<span class="${className}">`;
-    }
-    return match;
-  });
-
-  // Restore closing span tags
+  // Restore span tags with class attributes
+  escaped = escaped.replace(/&lt;span class=(?:&quot;|&#039;)([a-zA-Z0-9_\-\s]+)(?:&quot;|&#039;)&gt;/g, '<span class="$1">');
   escaped = escaped.replace(/&lt;\/span&gt;/g, '</span>');
 
   return escaped;
