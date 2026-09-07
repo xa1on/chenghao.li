@@ -1,6 +1,7 @@
 import { FileSystem } from './fs.js';
 import { Shell } from './shell.js';
-import { commands } from './commands/index.js';
+import { commands } from '../gen/commands.js';
+import { HOSTNAME, DEFAULT_USERNAME, HOME_PATH } from './config.js';
 
 // Instantiate FileSystem and Shell contexts
 const fileSystem = new FileSystem();
@@ -8,6 +9,9 @@ const fileSystem = new FileSystem();
 const shell = new Shell({
   fileSystem,
   commands,
+  hostname: HOSTNAME,
+  username: DEFAULT_USERNAME,
+  homePath: HOME_PATH,
   onConnect: async (shell) => {
     const now = new Date();
     const currentTimestamp = now.toString();
@@ -39,7 +43,7 @@ const shell = new Shell({
 `;
 
     shell.print(`Arch Linux 6.9.3-arch1-1 (tty1)`, 'color-dim');
-    shell.print(`\n  >>> <span class="blue">Welcome, ${shell.currentUsername}@chenghao.li!</span> <<<`, 'color-accent');
+    shell.print(`\n  >>> <span class="blue">Welcome, ${shell.currentUsername}@${shell.hostname}!</span> <<<`, 'color-accent');
     shell.print(asciiArt, 'color-accent motd-ascii-art');
 
     // Print buddy box using decoupled command

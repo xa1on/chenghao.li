@@ -1,4 +1,5 @@
 import { audio } from '../../audio.js';
+import { HOME_PATH } from '../../config.js';
 
 export const sokoban = {
   name: 'sokoban',
@@ -88,20 +89,21 @@ export const sokoban = {
         }
         const text = await shell.fileSystem.readFile(targetPath);
         isCustom = true;
-        return parseMap(text);
+        return { mapState: parseMap(text), rawText: text };
       } else {
         // Load builtin level
+        const home = shell.homePath || HOME_PATH;
         try {
-          const pathArr = ['sokoban', `level${indexOrPath}.txt`];
+          const pathArr = [...home, 'games', 'sokoban', `level${indexOrPath}.txt`];
           const text = await shell.fileSystem.readFile(pathArr);
           isCustom = false;
-          return parseMap(text);
+          return { mapState: parseMap(text), rawText: text };
         } catch (e) {
           // Use fallback levels
           isCustom = false;
           const fallback = builtinFallbackLevels[indexOrPath];
           if (!fallback) throw new Error(`Fallback level ${indexOrPath} not found`);
-          return parseMap(fallback);
+          return { mapState: parseMap(fallback), rawText: fallback };
         }
       }
     }
@@ -112,15 +114,18 @@ export const sokoban = {
 
     if (customPathStr) {
       try {
-        mapState = await loadLevel(customPathStr);
-        initialMapStr = await shell.fileSystem.readFile(shell.fileSystem.resolvePath(shell.currentPath, customPathStr));
+        const loaded = await loadLevel(customPathStr);
+        mapState = loaded.mapState;
+        initialMapStr = loaded.rawText;
       } catch (err) {
         shell.print(`Error starting custom Sokoban level: ${err.message}`, 'color-error');
         return;
       }
     } else {
       try {
-        mapState = await loadLevel(currentLevelIndex);
+        const loaded = await loadLevel(currentLevelIndex);
+        mapState = loaded.mapState;
+        initialMapStr = loaded.rawText;
       } catch (err) {
         shell.print(`Error starting Sokoban: ${err.message}`, 'color-error');
         return;
@@ -251,7 +256,9 @@ export const sokoban = {
           moveCount = 0;
           pushCount = 0;
           try {
-            mapState = await loadLevel(currentLevelIndex);
+            const loaded = await loadLevel(currentLevelIndex);
+            mapState = loaded.mapState;
+            initialMapStr = loaded.rawText;
             drawSokoban();
           } catch (err) {
             shell.print(`Error loading level: ${err.message}`, 'color-error');
@@ -341,15 +348,9 @@ export const sokoban = {
           // Reset level
           moveCount = 0;
           pushCount = 0;
-          if (isCustom) {
+          if (initialMapStr) {
             mapState = parseMap(initialMapStr);
             drawSokoban();
-          } else {
-            // reload built-in fallback/file map
-            loadLevel(currentLevelIndex).then(parsed => {
-              mapState = parsed;
-              drawSokoban();
-            });
           }
           return;
         }

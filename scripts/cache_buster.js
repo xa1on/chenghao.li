@@ -3,6 +3,17 @@ const crypto = require('crypto');
 const pathModule = require('path');
 const { pathToFileURL } = require('url');
 
+const config = require('../var/www/chenghao.li/js/config.js');
+const {
+  GEN_DIR,
+  FS_MANIFEST_PATH,
+  COMMANDS_INDEX_PATH,
+  BUDDIES_PATH,
+  COMMANDS_SRC_DIR,
+  BUDDIES_SRC_DIR,
+  WEB_ROOT
+} = config;
+
 // Mock browser globals for Node.js import evaluation
 global.localStorage = {
   getItem: () => null,
@@ -26,24 +37,24 @@ const IGNORED_NAMES = new Set([
 ]);
 
 const IGNORED_PATHS = new Set([
-  'archive/index.html',
+  'var/www/chenghao.li/archive/index.html',
   '.gitignore',
   '404.html',
-  'js/fs_manifest.js',
-  'js/commands/index.js',
-  'js/buddies.js'
+  'index.html' // Host file at root, mapped into /var/www/chenghao.li/index.html in VFS
 ]);
 
 // Core files that form a dependency cycle with fs_manifest.js
 const CYCLIC_PATHS = new Set([
   'index.html',
-  'js/main.js',
-  'js/fs.js',
-  'js/shell.js',
-  'js/commands/index.js',
-  'js/utils/markdown.js',
-  'js/audio.js',
-  'js/buddies.js'
+  'var/www/chenghao.li/js/config.js',
+  'var/www/chenghao.li/js/main.js',
+  'var/www/chenghao.li/js/fs.js',
+  'var/www/chenghao.li/js/shell.js',
+  COMMANDS_INDEX_PATH,
+  'var/www/chenghao.li/js/utils/markdown.js',
+  'var/www/chenghao.li/js/audio.js',
+  BUDDIES_PATH,
+  FS_MANIFEST_PATH
 ]);
 
 // Recursively find files
@@ -78,6 +89,12 @@ function resolveImportPath(sourceFile, importPath) {
 function buildVfsTree(dir, fileHashes = {}) {
   const tree = {};
   const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+  // Map canonical index.html under WEB_ROOT
+  const normalizedDir = dir.replace(/\\/g, '/');
+  if (normalizedDir === WEB_ROOT) {
+    tree['index.html'] = 'core';
+  }
 
   for (const entry of entries) {
     const name = entry.name;
@@ -125,7 +142,7 @@ export const virtualFS = ${JSON.stringify(vfsTree, null, 2)};
 }
 
 function generateBuddiesListContent() {
-  const buddiesDir = pathModule.join(__dirname, '..', 'assets', 'images', 'buddies');
+  const buddiesDir = pathModule.resolve(BUDDIES_SRC_DIR);
   let files = [];
   if (fs.existsSync(buddiesDir)) {
     files = fs.readdirSync(buddiesDir).filter(file => file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.webp'));
@@ -134,7 +151,7 @@ function generateBuddiesListContent() {
 }
 
 async function generateCommandsIndexContent() {
-  const commandsDir = pathModule.join(__dirname, '..', 'js', 'commands');
+  const commandsDir = pathModule.resolve(COMMANDS_SRC_DIR);
   const categories = ['general', 'filesystem', 'audio', 'games'];
   const imports = [];
   const eagerCommands = [];
@@ -168,10 +185,10 @@ async function generateCommandsIndexContent() {
             description: cmd.description || '',
             category: cleanCategory,
             args: cmd.args || [],
-            importPath: `./${category}/${file}`
+            importPath: `../js/commands/${category}/${file}`
           });
         } else {
-          imports.push(`import { ${cmdName} } from './${category}/${file}';`);
+          imports.push(`import { ${cmdName} } from '../js/commands/${category}/${file}';`);
           eagerCommands.push(cmdName);
         }
       } catch (err) {
@@ -209,14 +226,14 @@ ${eagerCommands.map(name => `  ${name},`).join('\n')}
 
 async function runCacheBuster() {
   const files = getFiles('.');
-  if (!files.includes('js/fs_manifest.js')) {
-    files.push('js/fs_manifest.js');
+  if (!files.includes(FS_MANIFEST_PATH)) {
+    files.push(FS_MANIFEST_PATH);
   }
-  if (!files.includes('js/commands/index.js')) {
-    files.push('js/commands/index.js');
+  if (!files.includes(COMMANDS_INDEX_PATH)) {
+    files.push(COMMANDS_INDEX_PATH);
   }
-  if (!files.includes('js/buddies.js')) {
-    files.push('js/buddies.js');
+  if (!files.includes(BUDDIES_PATH)) {
+    files.push(BUDDIES_PATH);
   }
 
   // Initialize file hashes with raw contents
@@ -243,22 +260,22 @@ async function runCacheBuster() {
 
     // 1. Regenerate buddies.js in-memory
     const newBuddiesContent = generateBuddiesListContent();
-    if (fileContents['js/buddies.js'] !== newBuddiesContent) {
-      fileContents['js/buddies.js'] = newBuddiesContent;
+    if (fileContents[BUDDIES_PATH] !== newBuddiesContent) {
+      fileContents[BUDDIES_PATH] = newBuddiesContent;
       const newHash = getHash(newBuddiesContent);
-      if (fileHashes['js/buddies.js'] !== newHash) {
-        fileHashes['js/buddies.js'] = newHash;
+      if (fileHashes[BUDDIES_PATH] !== newHash) {
+        fileHashes[BUDDIES_PATH] = newHash;
         stable = false; // Trigger pass to propagate updated buddies hash
       }
     }
 
     // 2. Regenerate commands/index.js in-memory
     const newIndexContent = await generateCommandsIndexContent();
-    if (fileContents['js/commands/index.js'] !== newIndexContent) {
-      fileContents['js/commands/index.js'] = newIndexContent;
+    if (fileContents[COMMANDS_INDEX_PATH] !== newIndexContent) {
+      fileContents[COMMANDS_INDEX_PATH] = newIndexContent;
       const newHash = getHash(newIndexContent);
-      if (fileHashes['js/commands/index.js'] !== newHash) {
-        fileHashes['js/commands/index.js'] = newHash;
+      if (fileHashes[COMMANDS_INDEX_PATH] !== newHash) {
+        fileHashes[COMMANDS_INDEX_PATH] = newHash;
         stable = false; // Trigger another pass to propagate this updated index hash
       }
     }
@@ -267,31 +284,31 @@ async function runCacheBuster() {
     const vfsTree = buildVfsTree('.', fileHashes);
     const newManifestContent = generateManifestContent(vfsTree);
 
-    if (fileContents['js/fs_manifest.js'] !== newManifestContent) {
-      fileContents['js/fs_manifest.js'] = newManifestContent;
+    if (fileContents[FS_MANIFEST_PATH] !== newManifestContent) {
+      fileContents[FS_MANIFEST_PATH] = newManifestContent;
       const newHash = getHash(newManifestContent);
-      if (fileHashes['js/fs_manifest.js'] !== newHash) {
-        fileHashes['js/fs_manifest.js'] = newHash;
+      if (fileHashes[FS_MANIFEST_PATH] !== newHash) {
+        fileHashes[FS_MANIFEST_PATH] = newHash;
         stable = false; // Trigger another pass to propagate this updated manifest hash
       }
     }
 
     // 4. Standard CSS and JS hash propagation
     for (const file of files) {
-      if (file === 'js/fs_manifest.js' || file === 'js/commands/index.js' || file === 'js/buddies.js') continue;
+      if (file === FS_MANIFEST_PATH || file === COMMANDS_INDEX_PATH || file === BUDDIES_PATH) continue;
 
       let content = fileContents[file];
       let originalContent = content;
 
       if (file.endsWith('.html')) {
         // Replace CSS references
-        content = content.replace(/(href=["'])(css\/.*?\.css)(?:\?v=[^"']*)?(["'])/g, (match, p1, p2, p3) => {
+        content = content.replace(/(href=["'])((?:var\/www\/chenghao\.li\/)?css\/.*?\.css)(?:\?v=[^"']*)?(["'])/g, (match, p1, p2, p3) => {
           const targetPath = resolveImportPath(file, p2);
           const hash = fileHashes[targetPath] || '';
           return `${p1}${p2}?v=${hash}${p3}`;
         });
         // Replace JS references
-        content = content.replace(/(src=["'])(js\/.*?\.js)(?:\?v=[^"']*)?(["'])/g, (match, p1, p2, p3) => {
+        content = content.replace(/(src=["'])((?:var\/www\/chenghao\.li\/)?(?:js|gen)\/.*?\.js)(?:\?v=[^"']*)?(["'])/g, (match, p1, p2, p3) => {
           const targetPath = resolveImportPath(file, p2);
           const hash = fileHashes[targetPath] || '';
           return `${p1}${p2}?v=${hash}${p3}`;
@@ -342,6 +359,10 @@ async function runCacheBuster() {
 }
 
 module.exports = {
+  GEN_DIR,
+  FS_MANIFEST_PATH,
+  COMMANDS_INDEX_PATH,
+  BUDDIES_PATH,
   getHash,
   buildVfsTree,
   generateManifestContent,

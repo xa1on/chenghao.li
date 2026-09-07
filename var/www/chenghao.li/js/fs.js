@@ -1,4 +1,5 @@
-import { virtualFS } from './fs_manifest.js';
+import { virtualFS } from '../gen/fs_manifest.js';
+import { HOME_PATH, VFS_INDEX_PATH } from './config.js';
 export { virtualFS };
 
 function deepMerge(target, source) {
@@ -55,7 +56,13 @@ export function resolvePath(vfs, currentPath, pathStr, followFinalSymlink = true
   if (depth > 20) return null;
   let target = [...currentPath];
 
-  if (pathStr.startsWith('/')) {
+  if (pathStr === '~' || pathStr.startsWith('~/')) {
+    target = [...HOME_PATH];
+    pathStr = pathStr.slice(1);
+    if (pathStr.startsWith('/')) {
+      pathStr = pathStr.slice(1);
+    }
+  } else if (pathStr.startsWith('/')) {
     target = [];
     pathStr = pathStr.slice(1);
   }
@@ -155,7 +162,10 @@ export class FileSystem {
 
     if (this.isBuiltInPath(pathArr)) {
       const hash = node;
-      const filePath = '/' + pathArr.join('/') + (typeof hash === 'string' && hash && hash !== 'core' ? '?v=' + hash : '');
+      let filePath = '/' + pathArr.join('/') + (typeof hash === 'string' && hash && hash !== 'core' ? '?v=' + hash : '');
+      if (pathArr.join('/') === VFS_INDEX_PATH) {
+        filePath = '/index.html';
+      }
       const response = await fetch(filePath);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);

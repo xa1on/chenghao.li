@@ -1,5 +1,14 @@
 import { audio } from './audio.js';
 import { parseMarkdown, escapeHTML } from './utils/markdown.js';
+import {
+  HOSTNAME,
+  DEFAULT_USERNAME,
+  HOME_PATH,
+  LOCAL_BOOT_PROMPT,
+  PROMPT_SYMBOL,
+  MAX_TERMINAL_OUTPUT_LINES,
+  TYPEWRITER_DEFAULT_DELAY
+} from './config.js';
 
 function findCommentIndex(str) {
   let inSingleQuote = false;
@@ -88,9 +97,15 @@ export class Shell {
     this.inputDisplay = document.getElementById('input-display');
     this.input = document.getElementById('terminal-input');
 
+    this.hostname = options.hostname || HOSTNAME;
+    this.currentUsername = options.username || DEFAULT_USERNAME;
+    this.homePath = options.homePath || HOME_PATH;
+    this.localPrompt = options.localPrompt || LOCAL_BOOT_PROMPT;
+    this.promptSymbol = options.promptSymbol || PROMPT_SYMBOL;
+
     this.loginState = 'BOOTING';
-    this.currentUsername = 'guest';
-    this.currentPath = [];
+    this.currentPath = [...this.homePath];
+    this.previousPath = null;
     this.commandHistory = [];
     this.historyIndex = -1;
     this.activeInputResolver = null;
@@ -102,8 +117,27 @@ export class Shell {
     this.fileSystem = options.fileSystem || null;
     this.commands = options.commands || {};
     this.onConnect = options.onConnect || null;
-    this.typewriterDelay = options.typewriterDelay !== undefined ? options.typewriterDelay : (options.typeSpeed !== undefined ? options.typeSpeed : 50);
+    this.typewriterDelay = options.typewriterDelay !== undefined ? options.typewriterDelay : (options.typeSpeed !== undefined ? options.typeSpeed : TYPEWRITER_DEFAULT_DELAY);
     this.placeholder = document.getElementById('input-placeholder');
+  }
+
+  getPromptHtml(promptSuffix = this.promptSymbol, displayPath = this.formatDisplayPath()) {
+    return `<span class="color-accent"><span class="red">${this.currentUsername}</span>@${this.hostname}</span>:<span class="color-dir">${displayPath}</span>${promptSuffix}`;
+  }
+
+  formatDisplayPath(pathArr = this.currentPath) {
+    const isHome = pathArr.length >= this.homePath.length &&
+      this.homePath.every((part, idx) => pathArr[idx] === part);
+    if (isHome) {
+      if (pathArr.length === this.homePath.length) {
+        return '~';
+      }
+      return '~/' + pathArr.slice(this.homePath.length).join('/');
+    }
+    if (pathArr.length === 0) {
+      return '/';
+    }
+    return '/' + pathArr.join('/');
   }
 
   mount() {
@@ -303,7 +337,7 @@ export class Shell {
           // Normal shell Ctrl+C behavior (only when NOT in a readInput sub-prompt)
           if (this.loginState === 'LOGGED_IN' && !this.isBooting && !this.input.disabled) {
             const currentVal = this.input.value;
-            this.print(`<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/')}</span># ${this.escapeHTML(currentVal)}^C`);
+            this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}^C`);
             this.input.value = '';
             this.inputDisplay.textContent = '';
             this.updatePrompt();
@@ -367,8 +401,7 @@ export class Shell {
     line.innerHTML = htmlContent;
     this.output.appendChild(line);
 
-    const MAX_LINES = 150;
-    while (this.output.children.length > MAX_LINES) {
+    while (this.output.children.length > MAX_TERMINAL_OUTPUT_LINES) {
       this.output.removeChild(this.output.firstChild);
     }
 
@@ -505,8 +538,7 @@ export class Shell {
 
   updatePrompt() {
     if (this.loginState === 'LOGGED_IN') {
-      const displayPath = this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/');
-      this.promptPrefix.innerHTML = `<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${displayPath}</span>#`;
+      this.promptPrefix.innerHTML = this.getPromptHtml();
       this.input.value = '';
       this.updateInputDisplay('');
     } else if (this.loginState === 'BOOTING') {
@@ -551,7 +583,7 @@ export class Shell {
     const trimmed = cmdStr.trim();
     if (trimmed === '') return;
 
-    const displayPath = this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/');
+    const displayPath = this.formatDisplayPath();
 
     const commentIdx = findCommentIndex(trimmed);
     let commandPart = trimmed;
@@ -563,7 +595,7 @@ export class Shell {
       commandPart = commandPartStr.trim();
     }
 
-    this.print(`<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${displayPath}</span># ${printedLine}`);
+    this.print(`${this.getPromptHtml()} ${printedLine}`);
 
     if (commandPart === '') return;
 
@@ -575,7 +607,7 @@ export class Shell {
     this.abortSignal = false;
 
     if (command !== 'cd' && !this.isBooting) {
-      this.updateBrowserUrl(this.currentPath.join('/'), commandPart);
+      this.updateBrowserUrl(this.formatDisplayPath(), commandPart);
     }
 
     if (this.commands[command]) {
@@ -658,8 +690,7 @@ export class Shell {
           this.updateInputDisplay(this.input.value);
         } else {
           this.print(matches.join('    '), 'color-accent');
-          const displayPath = this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/');
-          this.print(`<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${displayPath}</span># ${this.escapeHTML(currentVal)}`);
+          this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
         }
       }
     } else {
@@ -685,8 +716,7 @@ export class Shell {
             this.updateInputDisplay(this.input.value);
           } else {
             this.print(matches.join('    '), 'color-accent');
-            const displayPath = this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/');
-            this.print(`<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${displayPath}</span># ${this.escapeHTML(currentVal)}`);
+            this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
           }
         }
         return;
@@ -756,9 +786,7 @@ export class Shell {
             return isDirNode ? `<span class="color-dir">${matchedName}/</span>` : `<span class="color-file">${matchedName}</span>`;
           });
           this.print(formattedMatches.join('    '));
-
-          const displayPath = this.currentPath.length === 0 ? '~' : '/' + this.currentPath.join('/');
-          this.print(`<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">${displayPath}</span># ${this.escapeHTML(currentVal)}`);
+          this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
         }
       }
     }
@@ -867,17 +895,22 @@ export class Shell {
     while (cleanPath.startsWith('/')) cleanPath = cleanPath.slice(1);
     while (cleanPath.endsWith('/')) cleanPath = cleanPath.slice(0, -1);
 
-    // Strip leading '~' or 'root' prefixes (e.g. ~/blogs -> blogs, ~ -> '')
+    // Handle home (~) and legacy root paths (e.g. root/blogs -> blogs)
+    let isHome = false;
     if (cleanPath === '~' || cleanPath === 'root') {
       cleanPath = '';
+      isHome = true;
     } else if (cleanPath.startsWith('~/')) {
       cleanPath = cleanPath.slice(2);
+      isHome = true;
     } else if (cleanPath.startsWith('root/')) {
       cleanPath = cleanPath.slice(5);
+      isHome = true;
     }
 
     if (cleanPath === 'index.html' || cleanPath === '404.html') {
       cleanPath = '';
+      isHome = true;
     }
 
     // Parse command parameter from query string (?md=, ?cat=, ?cmd=, ?p=, ?c=, ?run=)
@@ -909,11 +942,13 @@ export class Shell {
       }
     }
 
+    const resolvedInitialPath = isHome ? (cleanPath ? '~/' + cleanPath : '~') : (cleanPath ? '/' + cleanPath : '');
+
     // Immediately sync browser URL so the address bar reflects the original URL upon load
-    this.updateBrowserUrl(cleanPath, initialCommand);
+    this.updateBrowserUrl(resolvedInitialPath || (isHome ? '~' : '/'), initialCommand);
 
     return {
-      initialPath: cleanPath,
+      initialPath: resolvedInitialPath,
       initialCommand: initialCommand
     };
   }
@@ -921,19 +956,18 @@ export class Shell {
   updateBrowserUrl(pathStr, cmdStr = '') {
     if (typeof window === 'undefined' || !window.history) return;
     try {
-      let cleanPath = (pathStr || '').trim();
+      let raw = (pathStr || '').trim();
+      let cleanPath = raw;
       while (cleanPath.startsWith('/')) cleanPath = cleanPath.slice(1);
       while (cleanPath.endsWith('/')) cleanPath = cleanPath.slice(0, -1);
 
-      if (cleanPath === '~' || cleanPath === 'root') {
-        cleanPath = '';
-      } else if (cleanPath.startsWith('~/')) {
-        cleanPath = cleanPath.slice(2);
-      } else if (cleanPath.startsWith('root/')) {
-        cleanPath = cleanPath.slice(5);
+      let newUrl = '/';
+      if (raw === '~' || raw.startsWith('~/')) {
+        let sub = raw === '~' ? '' : raw.slice(2);
+        newUrl = sub ? '/~/' + sub + '/' : '/~/';
+      } else if (raw.startsWith('/')) {
+        newUrl = cleanPath ? '/' + cleanPath + '/' : '/';
       }
-
-      let newUrl = cleanPath ? '/~/' + cleanPath + '/' : '/~/';
 
       if (cmdStr && typeof cmdStr === 'string') {
         const trimmedCmd = cmdStr.trim();
@@ -966,18 +1000,19 @@ export class Shell {
     this.loginState = 'BOOTING';
     this.isBooting = true;
     this.input.disabled = true;
-    this.promptPrefix.innerHTML = '<span class="color-accent">C:\\Users\\cli&gt;</span>';
+    this.promptPrefix.innerHTML = `<span class="color-accent">${this.localPrompt}</span>`;
     this.inputDisplay.textContent = '';
 
     const { initialPath, initialCommand } = this.getInitialDeepLink();
 
     audio.startHum();
 
-    const cmdText = 'ssh ' + this.currentUsername + '<d:100>@chenghao.li';
+    const sshCmd = `ssh ${this.currentUsername}@${this.hostname}`;
+    const cmdText = `ssh ${this.currentUsername}<d:100>@${this.hostname}`;
     await this.typeCommand(cmdText);
 
     await new Promise(resolve => setTimeout(resolve, 200));
-    this.print('<span class="color-accent">C:\\Users\\cli&gt;</span> ssh ' + this.currentUsername + '@chenghao.li');
+    this.print(`<span class="color-accent">${this.localPrompt}</span> ${sshCmd}`);
     this.promptPrefix.innerHTML = '';
     this.updateInputDisplay('');
 
@@ -987,20 +1022,17 @@ export class Shell {
       await this.onConnect(this);
     }
 
-    this.promptPrefix.innerHTML = `<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">~</span>#`;
+    this.promptPrefix.innerHTML = this.getPromptHtml();
     this.loginState = 'LOGGED_IN';
     audio.fadeHumQuiet();
 
     await new Promise(resolve => setTimeout(resolve, 600));
 
     // Preset initial ls
-    await this.typeAndSubmit('ls<d:200> # click items to navigate<d:75>, or use cat/cd<d:50> (check out info!)', null, 400);
+    await this.typeAndSubmit('ls<d:200> # click items to navigate<d:75>, or use cat/cd', null, 400);
 
-    await new Promise(resolve => setTimeout(resolve, 400));
-    await this.typeAndSubmit('<d:100>ls<d:100> info<d:50> # vvv<d:45> feel free to start here!<d:75> vvv', null, 400);
-
-    if (initialPath && this.fileSystem) {
-      const resolved = this.fileSystem.resolvePath([], initialPath);
+    if (initialPath && initialPath !== '~' && this.fileSystem) {
+      const resolved = this.fileSystem.resolvePath(this.currentPath, initialPath);
       if (resolved !== null) {
         const targetObj = this.fileSystem.getNodeByPath(resolved);
         const isDir = typeof targetObj === 'object';
@@ -1041,6 +1073,6 @@ export class Shell {
     this.inputLine.style.visibility = 'visible';
     this.updatePrompt();
     this.focus();
-    this.updateBrowserUrl(this.currentPath.join('/'), initialCommand);
+    this.updateBrowserUrl(this.formatDisplayPath(), initialCommand);
   }
 }

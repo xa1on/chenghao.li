@@ -1,3 +1,5 @@
+import { HOSTNAME } from '../../config.js';
+
 export const neofetch = {
   name: 'neofetch',
   description: 'Display system and portfolio information in a beautiful layout.',
@@ -84,11 +86,12 @@ export const neofetch = {
       ""
     ];
 
+    const host = shell.hostname || HOSTNAME;
     const stats = [
-      `<span class="color-accent red">${shell.currentUsername}</span>@<span class="color-accent">chenghao.li</span>`,
-      "-".repeat(`${shell.currentUsername}@chenghao.li`.length),
+      `<span class="color-accent red">${shell.currentUsername}</span>@<span class="color-accent">${host}</span>`,
+      "-".repeat(`${shell.currentUsername}@${host}`.length),
       `<span class="red">OS</span>:          Arch Linux x86_64`,
-      `<span class="red">Host</span>:        chenghao.li`,
+      `<span class="red">Host</span>:        ${host}`,
       `<span class="red">Kernel</span>:      6.9.3-arch1-1`,
       `<span class="red">Uptime</span>:      ${uptimeStr}`,
       `<span class="red">Shell</span>:       ArchaicSh 1.0`,

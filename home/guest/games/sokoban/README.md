@@ -9,14 +9,15 @@ sokoban
 
 Or you can load any level file in this directory (or anywhere on your filesystem) by specifying the path:
 ```bash
-sokoban /sokoban/level1.txt
+sokoban level1.txt
+# or: sokoban ~/games/sokoban/level1.txt
 ```
 
 ---
 
 ## How to Create or Edit Levels
 
-You can use the built-in terminal editors `nano` or `vim` to create your own levels (e.g. `nano /sokoban/mylevel.txt` or `vim ~/mylevel.txt`).
+You can use the built-in terminal editors `nano` or `vim` to create your own levels (e.g. `nano ~/games/sokoban/mylevel.txt` or `vim ~/mylevel.txt`).
 
 Levels are defined using standard text grids. Use the following characters:
 

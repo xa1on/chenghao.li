@@ -1,4 +1,5 @@
-import { buddies as buddiesList } from '../../buddies.js';
+import { buddies as buddiesList } from '../../../gen/buddies.js';
+import { WEB_ROOT } from '../../config.js';
 
 export const buddies = {
   name: 'buddies',
@@ -33,7 +34,7 @@ export const buddies = {
           ? nameWithoutExt
           : `https://${nameWithoutExt}`;
 
-        rowContentHTML += `<a href="${url}" target="_blank" rel="noopener noreferrer" class="buddy-link" title="${nameWithoutExt}"><img src="/assets/images/buddies/${filename}" alt="${nameWithoutExt}" class="buddy-img" onerror="this.parentNode.style.display='none'"></a>`;
+        rowContentHTML += `<a href="${url}" target="_blank" rel="noopener noreferrer" class="buddy-link" title="${nameWithoutExt}"><img src="/${WEB_ROOT}/assets/images/buddies/${filename}" alt="${nameWithoutExt}" class="buddy-img" onerror="this.parentNode.style.display='none'"></a>`;
       });
 
       rowsHTML += `<div class="buddy-box-row"><span class="buddy-border">║</span><div class="buddy-row-content">${rowContentHTML}</div><span class="buddy-border">║</span></div>`;
