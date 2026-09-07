@@ -239,6 +239,10 @@
   margin-left: 1ch;
 }
 
+.prompt-prefix:empty + .input-container {
+  margin-left: 0;
+}
+
 .input-display {
   white-space: pre-wrap;
   word-break: break-all;

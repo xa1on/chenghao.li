@@ -818,8 +818,9 @@ export class Shell {
     return displayedText;
   }
 
-  async typeAndSubmit(text, speed = this.typewriterDelay) {
+  async typeAndSubmit(text, speed = this.typewriterDelay, enter_delay = this.typewriterDelay) {
     const cleanCmd = await this.typeCommand(text, speed);
+    await new Promise(resolve => setTimeout(resolve, enter_delay));
     await this.handleInputSubmit(cleanCmd);
     return cleanCmd;
   }
@@ -975,14 +976,17 @@ export class Shell {
     const cmdText = 'ssh ' + this.currentUsername + '<d:100>@chenghao.li';
     await this.typeCommand(cmdText);
 
-    await new Promise(resolve => setTimeout(resolve, 400));
+    await new Promise(resolve => setTimeout(resolve, 200));
     this.print('<span class="color-accent">C:\\Users\\cli&gt;</span> ssh ' + this.currentUsername + '@chenghao.li');
-    this.inputDisplay.textContent = '';
+    this.promptPrefix.innerHTML = '';
+    this.updateInputDisplay('');
 
-    audio.playBootChime();
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     if (this.onConnect) {
       await this.onConnect(this);
     }
+
     this.promptPrefix.innerHTML = `<span class="color-accent"><span class="red">${this.currentUsername}</span>@chenghao.li</span>:<span class="color-dir">~</span>#`;
     this.loginState = 'LOGGED_IN';
     audio.fadeHumQuiet();
@@ -990,10 +994,10 @@ export class Shell {
     await new Promise(resolve => setTimeout(resolve, 600));
 
     // Preset initial ls
-    await this.typeAndSubmit('ls<d:200> # click items to navigate<d:100>, or use cat/cd<d:75> (check out info!)');
+    await this.typeAndSubmit('ls<d:200> # click items to navigate<d:75>, or use cat/cd<d:50> (check out info!)', null, 400);
 
     await new Promise(resolve => setTimeout(resolve, 400));
-    await this.typeAndSubmit('<d:100>ls<d:200> info<d:100> # vvv<d:75> feel free to start here!<d:75> vvv');
+    await this.typeAndSubmit('<d:100>ls<d:100> info<d:50> # vvv<d:45> feel free to start here!<d:75> vvv', null, 400);
 
     if (initialPath && this.fileSystem) {
       const resolved = this.fileSystem.resolvePath([], initialPath);
