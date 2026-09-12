@@ -154,17 +154,13 @@ class PaintEditor {
 
     // Brushes: 6 standard block characters plus the most recent custom character (default empty)
     this.brushes = ['█', '▓', '▒', '░', '▀', '▄', ' '];
-    // Brush color options
-    this.brushColors = [
-      'white', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan',
-      'white color-dim', 'red color-dim', 'green color-dim', 'yellow color-dim', 'blue color-dim', 'magenta color-dim', 'cyan color-dim'
-    ];
-    // Background color options
-    this.bgColors = [
-      'none',
-      'bg-white', 'bg-red', 'bg-green', 'bg-yellow', 'bg-blue', 'bg-magenta', 'bg-cyan',
-      'bg-white color-dim', 'bg-red color-dim', 'bg-green color-dim', 'bg-yellow color-dim', 'bg-blue color-dim', 'bg-magenta color-dim', 'bg-cyan color-dim'
-    ];
+    // Brush color options (base colors)
+    this.brushColors = ['white', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan'];
+    // Background color options (base colors)
+    this.bgColors = ['none', 'bg-white', 'bg-red', 'bg-green', 'bg-yellow', 'bg-blue', 'bg-magenta', 'bg-cyan'];
+    // Dim mode toggles
+    this.isBrushDim = false;
+    this.isBgDim = false;
 
     // Toolbar element references for O(1) toolbar rendering updates
     this.toolDOMs = {};
@@ -369,7 +365,7 @@ class PaintEditor {
   }
 
   setupDOM() {
-    const colorHelp = this.isColorSupported ? '<div class="paint-help-item"><span class="paint-help-key">Alt+c</span> Brush Color</div><div class="paint-help-item"><span class="paint-help-key">Alt+v</span> Background Color</div>' : '';
+    const colorHelp = this.isColorSupported ? '<div class="paint-help-item"><span class="paint-help-key">Alt+c/d</span> Color/Dim</div><div class="paint-help-item"><span class="paint-help-key">Alt+v/Shift+d</span> BG/Dim</div>' : '';
 
     this.container.innerHTML = `
       <div class="paint-header" id="paint-header"></div>
@@ -494,6 +490,10 @@ class PaintEditor {
         this.selectColor(btn.dataset.color);
       } else if (btn.dataset.bg) {
         this.selectBgColor(btn.dataset.bg);
+      } else if (btn.dataset.action === 'toggle-brush-dim') {
+        this.toggleBrushDim();
+      } else if (btn.dataset.action === 'toggle-bg-dim') {
+        this.toggleBgDim();
       }
     });
 
@@ -565,10 +565,17 @@ class PaintEditor {
 
     const actualTool = isRightClick ? 'eraser' : this.activeTool;
 
+    const fgColor = this.isColorSupported
+      ? (this.activeColor + (this.isBrushDim ? ' color-dim' : ''))
+      : 'white';
+    const bgColor = this.isColorSupported
+      ? (this.activeBgColor === 'none' ? 'none' : (this.activeBgColor + (this.isBgDim ? ' color-dim' : '')))
+      : 'none';
+
     if (actualTool === 'pencil') {
       this.cells[y][x].char = this.activeChar;
-      this.cells[y][x].color = this.isColorSupported ? this.activeColor : 'white';
-      this.cells[y][x].background = this.isColorSupported ? this.activeBgColor : 'none';
+      this.cells[y][x].color = fgColor;
+      this.cells[y][x].background = bgColor;
       this.isModified = true;
       audio.playKeyclick(this.activeChar);
     } else if (actualTool === 'eraser') {
@@ -583,12 +590,12 @@ class PaintEditor {
       const targetBg = this.cells[y][x].background;
 
       if (targetChar === this.activeChar &&
-        targetColor === (this.isColorSupported ? this.activeColor : 'white') &&
-        targetBg === (this.isColorSupported ? this.activeBgColor : 'none')) {
+        targetColor === fgColor &&
+        targetBg === bgColor) {
         return;
       }
 
-      this.floodFill(x, y, targetChar, targetColor, targetBg);
+      this.floodFill(x, y, targetChar, targetColor, targetBg, fgColor, bgColor);
       this.isModified = true;
       this.drawFullGrid();
       audio.playMelody([
@@ -598,9 +605,11 @@ class PaintEditor {
     }
   }
 
-  floodFill(startX, startY, targetChar, targetColor, targetBg) {
+  floodFill(startX, startY, targetChar, targetColor, targetBg, fillFg = null, fillBg = null) {
     const queue = [[startX, startY]];
     const visited = new Uint8Array(this.width * this.height);
+    const fgColor = fillFg !== null ? fillFg : (this.isColorSupported ? (this.activeColor + (this.isBrushDim ? ' color-dim' : '')) : 'white');
+    const bgColor = fillBg !== null ? fillBg : (this.isColorSupported ? (this.activeBgColor === 'none' ? 'none' : (this.activeBgColor + (this.isBgDim ? ' color-dim' : ''))) : 'none');
 
     let head = 0;
     while (head < queue.length) {
@@ -614,8 +623,8 @@ class PaintEditor {
       const cell = this.cells[y][x];
       if (cell.char === targetChar && cell.color === targetColor && cell.background === targetBg) {
         cell.char = this.activeChar;
-        cell.color = this.isColorSupported ? this.activeColor : 'white';
-        cell.background = this.isColorSupported ? this.activeBgColor : 'none';
+        cell.color = fgColor;
+        cell.background = bgColor;
 
         if (x + 1 < this.width) queue.push([x + 1, y]);
         if (x - 1 >= 0) queue.push([x - 1, y]);
@@ -738,10 +747,9 @@ class PaintEditor {
       let colorsHtml = '';
       for (const c of this.brushColors) {
         const id = c.replace(' ', '-');
-        const isDim = c.includes('color-dim');
-        const opacityStyle = isDim ? '; opacity: 0.6;' : '';
-        colorsHtml += `<span class="paint-option-btn" id="color-btn-${id}" style="color: ${this.getColorStyle(c)}${opacityStyle}" data-color="${c}"></span>`;
+        colorsHtml += `<span class="paint-option-btn" id="color-btn-${id}" style="color: ${this.getColorStyle(c)}" data-color="${c}"></span>`;
       }
+      colorsHtml += `<span class="paint-option-btn" id="brush-dim-btn" data-action="toggle-brush-dim" style="margin-left: 8px;"></span>`;
       colorsRowHtml = `
         <div class="paint-toolbar-row">
           <span class="paint-label">BRUSH COLOR:</span>
@@ -753,11 +761,10 @@ class PaintEditor {
       let bgHtml = '';
       for (const bg of this.bgColors) {
         const id = bg.replace(' ', '-');
-        const isDim = bg.includes('color-dim');
-        const opacityStyle = isDim ? '; opacity: 0.6;' : '';
         const colorHex = bg === 'none' ? 'inherit' : this.getColorStyle(bg.replace('bg-', ''));
-        bgHtml += `<span class="paint-option-btn" id="bg-btn-${id}" style="color: ${colorHex}${opacityStyle}" data-bg="${bg}"></span>`;
+        bgHtml += `<span class="paint-option-btn" id="bg-btn-${id}" style="color: ${colorHex}" data-bg="${bg}"></span>`;
       }
+      bgHtml += `<span class="paint-option-btn" id="bg-dim-btn" data-action="toggle-bg-dim" style="margin-left: 8px;"></span>`;
       bgColorsRowHtml = `
         <div class="paint-toolbar-row">
           <span class="paint-label">BACKGROUND:</span>
@@ -837,32 +844,61 @@ class PaintEditor {
         const el = this.colorDOMs[c];
         if (!el) continue;
         const isActive = this.activeColor === c;
-        const formattedName = c.replace(' color-dim', ' (dim)');
-        const displayLabel = isActive ? `[${formattedName}]` : formattedName;
+        const displayLabel = isActive ? `[${c}]` : c;
 
         if (el.textContent !== displayLabel) {
           el.textContent = displayLabel;
         }
+        el.style.opacity = this.isBrushDim ? '0.6' : '1';
         if (el.classList.contains('active') !== isActive) {
           el.classList.toggle('active', isActive);
         }
+      }
+
+      const brushDimEl = this.container.querySelector('#brush-dim-btn');
+      if (brushDimEl) {
+        const displayLabel = this.isBrushDim ? '[DIM]' : 'DIM';
+        if (brushDimEl.textContent !== displayLabel) brushDimEl.textContent = displayLabel;
+        brushDimEl.classList.toggle('active', this.isBrushDim);
       }
 
       for (const bg of this.bgColors) {
         const el = this.bgColorDOMs[bg];
         if (!el) continue;
         const isActive = this.activeBgColor === bg;
-        const formattedName = bg === 'none' ? 'none' : bg.replace('bg-', '').replace(' color-dim', ' (dim)');
-        const displayLabel = isActive ? `[${formattedName}]` : formattedName;
+        const name = bg === 'none' ? 'none' : bg.replace('bg-', '');
+        const displayLabel = isActive ? `[${name}]` : name;
 
         if (el.textContent !== displayLabel) {
           el.textContent = displayLabel;
         }
+        el.style.opacity = (bg !== 'none' && this.isBgDim) ? '0.6' : '1';
         if (el.classList.contains('active') !== isActive) {
           el.classList.toggle('active', isActive);
         }
       }
+
+      const bgDimEl = this.container.querySelector('#bg-dim-btn');
+      if (bgDimEl) {
+        const displayLabel = this.isBgDim ? '[DIM]' : 'DIM';
+        if (bgDimEl.textContent !== displayLabel) bgDimEl.textContent = displayLabel;
+        bgDimEl.classList.toggle('active', this.isBgDim);
+      }
     }
+  }
+
+  toggleBrushDim() {
+    this.isBrushDim = !this.isBrushDim;
+    audio.playKeyclick('d');
+    this.drawToolbar();
+    this.showStatus(`Brush Dim: ${this.isBrushDim ? 'ON' : 'OFF'}`);
+  }
+
+  toggleBgDim() {
+    this.isBgDim = !this.isBgDim;
+    audio.playKeyclick('d');
+    this.drawToolbar();
+    this.showStatus(`Background Dim: ${this.isBgDim ? 'ON' : 'OFF'}`);
   }
 
   getColorStyle(colorClass) {
@@ -1026,13 +1062,30 @@ class PaintEditor {
       return;
     }
 
+    // Toggle Brush Dim: Alt+D or Alt+Shift+C
+    if ((e.altKey && key.toLowerCase() === 'd' && !e.shiftKey) || (e.altKey && e.shiftKey && key.toLowerCase() === 'c')) {
+      if (this.isColorSupported) {
+        e.preventDefault();
+        this.toggleBrushDim();
+      }
+      return;
+    }
+
+    // Toggle Background Dim: Alt+Shift+D or Alt+Shift+V
+    if ((e.altKey && e.shiftKey && key.toLowerCase() === 'd') || (e.altKey && e.shiftKey && key.toLowerCase() === 'v')) {
+      if (this.isColorSupported) {
+        e.preventDefault();
+        this.toggleBgDim();
+      }
+      return;
+    }
+
     // Cycle Brush Color: Alt+C
-    if (e.altKey && key.toLowerCase() === 'c') {
+    if (e.altKey && key.toLowerCase() === 'c' && !e.shiftKey) {
       if (this.isColorSupported) {
         e.preventDefault();
         const idx = this.brushColors.indexOf(this.activeColor);
-        const dir = e.shiftKey ? -1 : 1;
-        this.activeColor = this.brushColors[(idx + dir + this.brushColors.length) % this.brushColors.length];
+        this.activeColor = this.brushColors[(idx + 1) % this.brushColors.length];
         audio.playKeyclick('c');
         this.drawToolbar();
       }
@@ -1040,12 +1093,11 @@ class PaintEditor {
     }
 
     // Cycle Background Color: Alt+V
-    if (e.altKey && key.toLowerCase() === 'v') {
+    if (e.altKey && key.toLowerCase() === 'v' && !e.shiftKey) {
       if (this.isColorSupported) {
         e.preventDefault();
         const idx = this.bgColors.indexOf(this.activeBgColor);
-        const dir = e.shiftKey ? -1 : 1;
-        this.activeBgColor = this.bgColors[(idx + dir + this.bgColors.length) % this.bgColors.length];
+        this.activeBgColor = this.bgColors[(idx + 1) % this.bgColors.length];
         audio.playKeyclick('v');
         this.drawToolbar();
       }
