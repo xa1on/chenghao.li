@@ -118,6 +118,7 @@ class PaintEditor {
     this.statusEl = null;
 
     this.isModified = false;
+    this.isPromptingSave = false;
     this.originalState = this.shell.loginState;
     this.shell.loginState = 'GAME'; // Bypass shell typing listener
 
@@ -375,20 +376,32 @@ class PaintEditor {
         <div class="paint-grid" id="paint-grid"></div>
       </div>
       <div class="paint-footer">
-        <div class="paint-toolbar" id="paint-toolbar"></div>
-        <div class="paint-help-grid">
-          <div class="paint-help-item"><span class="paint-help-key">Arrows/WASD</span> Move</div>
-          <div class="paint-help-item"><span class="paint-help-key">Space</span> Draw</div>
-          <div class="paint-help-item"><span class="paint-help-key">Enter</span> Toggle Autodraw</div>
-          <div class="paint-help-item"><span class="paint-help-key">Shift+Move</span> Line Draw</div>
-          <div class="paint-help-item"><span class="paint-help-key">Backspace/0</span> Erase</div>
-          <div class="paint-help-item"><span class="paint-help-key">1-6</span> Select Blocks</div>
-          <div class="paint-help-item"><span class="paint-help-key">Any Key</span> Custom Brush</div>
-          ${colorHelp}
-          <div class="paint-help-item"><span class="paint-help-key">t</span> Cycle Tool</div>
-          <div class="paint-help-item"><span class="paint-help-key">+/-</span> Zoom Canvas</div>
-          <div class="paint-help-item"><span class="paint-help-key">u/r</span> Undo/Redo</div>
-          <div class="paint-help-item"><span class="paint-help-key">Ctrl+s/q</span> Save/Quit</div>
+        <div class="paint-prompt-container" id="paint-prompt" style="display: none; flex-direction: column;">
+          <div class="nano-prompt color-accent" style="padding: 6px 12px; font-weight: bold; background-color: #1a1a24; border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
+            Save modified artwork? (Answering "No" will DISCARD changes.) [y/n/ctrl+c]
+          </div>
+          <div class="paint-help-grid" style="padding: 8px 12px; background-color: #0c0c12;">
+            <div class="paint-help-item paint-prompt-btn" data-action="yes" style="cursor: pointer;"><span class="paint-help-key">Y</span> Yes</div>
+            <div class="paint-help-item paint-prompt-btn" data-action="no" style="cursor: pointer;"><span class="paint-help-key">N</span> No</div>
+            <div class="paint-help-item paint-prompt-btn" data-action="cancel" style="cursor: pointer;"><span class="paint-help-key">^C</span> Cancel</div>
+          </div>
+        </div>
+        <div class="paint-normal-footer" id="paint-normal-footer" style="display: flex; flex-direction: column;">
+          <div class="paint-toolbar" id="paint-toolbar"></div>
+          <div class="paint-help-grid">
+            <div class="paint-help-item"><span class="paint-help-key">Arrows/WASD</span> Move</div>
+            <div class="paint-help-item"><span class="paint-help-key">Space</span> Draw</div>
+            <div class="paint-help-item"><span class="paint-help-key">Enter</span> Toggle Autodraw</div>
+            <div class="paint-help-item"><span class="paint-help-key">Shift+Move</span> Line Draw</div>
+            <div class="paint-help-item"><span class="paint-help-key">Backspace/0</span> Erase</div>
+            <div class="paint-help-item"><span class="paint-help-key">1-6</span> Select Blocks</div>
+            <div class="paint-help-item"><span class="paint-help-key">Any Key</span> Custom Brush</div>
+            ${colorHelp}
+            <div class="paint-help-item"><span class="paint-help-key">t</span> Cycle Tool</div>
+            <div class="paint-help-item"><span class="paint-help-key">+/-</span> Zoom Canvas</div>
+            <div class="paint-help-item"><span class="paint-help-key">u/r</span> Undo/Redo</div>
+            <div class="paint-help-item"><span class="paint-help-key">Ctrl+s/q</span> Save/Quit</div>
+          </div>
         </div>
       </div>
     `;
@@ -396,12 +409,15 @@ class PaintEditor {
     this.gridEl = this.container.querySelector('#paint-grid');
     this.statusEl = this.container.querySelector('#paint-header');
     this.toolbarEl = this.container.querySelector('#paint-toolbar');
+    this.promptEl = this.container.querySelector('#paint-prompt');
+    this.normalFooterEl = this.container.querySelector('#paint-normal-footer');
 
     this.gridEl.style.gridTemplateColumns = `repeat(${this.width}, 1fr)`;
     this.gridEl.style.setProperty('--cell-font-size', `${this.fontSize}px`);
 
     // Mouse handlers on grid element
     this.gridEl.addEventListener('mousedown', (e) => {
+      if (this.isPromptingSave) return;
       const cellEl = e.target.closest('.paint-cell');
       if (!cellEl) return;
       e.preventDefault(); // Prevents selection / drag artifacts
@@ -423,6 +439,7 @@ class PaintEditor {
     });
 
     this.gridEl.addEventListener('mouseover', (e) => {
+      if (this.isPromptingSave) return;
       const cellEl = e.target.closest('.paint-cell');
       if (!cellEl) return;
       const x = parseInt(cellEl.dataset.x, 10);
@@ -452,6 +469,7 @@ class PaintEditor {
 
     // Event delegation on toolbar wrapper element to avoid inline onclick globals
     this.toolbarEl.addEventListener('click', (e) => {
+      if (this.isPromptingSave) return;
       const btn = e.target.closest('.paint-option-btn');
       if (!btn) return;
       if (btn.dataset.tool) {
@@ -464,6 +482,40 @@ class PaintEditor {
         this.selectBgColor(btn.dataset.bg);
       }
     });
+
+    // Event delegation on prompt buttons
+    this.promptEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.paint-prompt-btn');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      if (action === 'yes') {
+        const saved = this.saveFile();
+        if (saved) {
+          this.cleanup();
+          this.onExit();
+        } else {
+          this.isPromptingSave = false;
+          this.drawFooter();
+        }
+      } else if (action === 'no') {
+        this.cleanup();
+        this.onExit();
+      } else if (action === 'cancel') {
+        this.isPromptingSave = false;
+        this.showStatus('Cancelled');
+        this.drawFooter();
+      }
+    });
+  }
+
+  drawFooter() {
+    if (this.isPromptingSave) {
+      this.promptEl.style.display = 'flex';
+      this.normalFooterEl.style.display = 'none';
+    } else {
+      this.promptEl.style.display = 'none';
+      this.normalFooterEl.style.display = 'flex';
+    }
   }
 
   getLinePoints(x0, y0, x1, y1) {
@@ -838,11 +890,40 @@ class PaintEditor {
   }
 
   handleKeydown(e) {
+    if (this.isPromptingSave) {
+      e.preventDefault();
+      const key = e.key.toLowerCase();
+      if (key === 'y') {
+        const saved = this.saveFile();
+        if (saved) {
+          this.cleanup();
+          this.onExit();
+        } else {
+          this.isPromptingSave = false;
+          this.drawFooter();
+        }
+      } else if (key === 'n') {
+        this.cleanup();
+        this.onExit();
+      } else if (key === 'escape' || (e.ctrlKey && key === 'c') || key === 'q') {
+        this.isPromptingSave = false;
+        this.showStatus('Cancelled');
+        this.drawFooter();
+      }
+      return;
+    }
+
     const key = e.key;
 
     if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 's') {
       e.preventDefault();
       this.saveFile();
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'c') {
+      e.preventDefault();
+      this.confirmExit();
       return;
     }
 
@@ -898,7 +979,7 @@ class PaintEditor {
       return;
     }
 
-    if (key === 'c') {
+    if (key === 'c' && !e.ctrlKey && !e.metaKey) {
       if (this.isColorSupported) {
         e.preventDefault();
         const idx = this.brushColors.indexOf(this.activeColor);
@@ -909,7 +990,7 @@ class PaintEditor {
       return;
     }
 
-    if (key === 'v') {
+    if (key === 'v' && !e.ctrlKey && !e.metaKey) {
       if (this.isColorSupported) {
         e.preventDefault();
         const idx = this.bgColors.indexOf(this.activeBgColor);
@@ -1046,15 +1127,18 @@ class PaintEditor {
         { f: 659.25, dur: 0.05, delay: 0.05 },
         { f: 783.99, dur: 0.1, delay: 0.1 }
       ], 'triangle', 0.1);
+      return true;
     } else {
       this.showStatus(`Error saving: ${saveResult}`);
+      return false;
     }
   }
 
   confirmExit() {
     if (this.isModified) {
-      const confirmExit = confirm('You have unsaved changes. Are you sure you want to quit?');
-      if (!confirmExit) return;
+      this.isPromptingSave = true;
+      this.drawFooter();
+      return;
     }
     audio.playKeyclick('q');
     this.cleanup();
