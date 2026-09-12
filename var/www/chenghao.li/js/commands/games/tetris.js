@@ -276,8 +276,6 @@ export const tetris = {
             sideInfo = `  <span class="color-accent">${level}</span>`;
           } else if (y === 19) {
             sideInfo = `  C:Hold/Up:Rot/Space:Drop`;
-          } else if (y === 20 && (COLS !== 10 || ROWS !== 20)) {
-            sideInfo = `  SIZE:     ${COLS}x${ROWS}`;
           }
 
           line += sideInfo + '\n';
