@@ -14,10 +14,86 @@ export const nano = {
   }
 };
 
+const NANO_HELP_TEXT = `
+
+ The nano command is a lightweight terminal text editor emulating GNU nano
+ inside the web browser. It allows you to create and edit text files on the
+ virtual filesystem.
+
+ There are four main sections of the editor:
+ 1. The top header shows the program version, the current filename, and
+    whether or not the buffer has been modified.
+ 2. The main editor window displays the text buffer with line numbers.
+ 3. The status line (third line from the bottom) displays status messages,
+    cursor coordinates, and interactive input prompts.
+ 4. The bottom two lines show the keyboard shortcuts.
+
+ Keyboard Conventions:
+  Control-key sequences are notated with a '^' (e.g. ^X). Hold Ctrl and press
+  the indicated key.
+  Meta-key sequences are notated with 'M-' (e.g. M-U). Hold Alt and press the
+  indicated key.
+
+ The following keystrokes are available in the main editor window:
+
+ FILE OPERATIONS
+  ^O                  Write Out: Save current buffer to the virtual filesystem
+  ^R                  Read File: Insert contents of another file at cursor
+  ^X                  Exit: Quit nano (prompts to save if buffer is modified)
+
+ EDITING & CLIPBOARD
+  ^K                  Cut: Cut selected text, or current line if no selection
+  M-6     (Alt+6)     Copy: Copy selected text, or current line to cutbuffer
+  ^U                  Paste: Paste (uncut) cutbuffer or clipboard at cursor
+  M-A     (Alt+A)     Set Mark: Start or clear text selection
+  M-U     (Alt+U)     Undo: Undo the last edit operation
+  M-E     (Alt+E)     Redo: Redo the last undone operation
+  ^J                  Justify: Format and justify current paragraph
+
+ SEARCH & NAVIGATION
+  ^W                  Where Is: Search forward for text string
+  ^/                  Go To Line: Jump directly to a line number
+  ^C                  Location: Show line, column, character count, and %
+  Arrow Keys          Move cursor up, down, left, and right
+  PageUp / PageDown   Scroll up or down by one screen
+  Home / End          Jump to start or end of current line
+
+ HELP VIEWER NAVIGATION
+  ^X, ^G, Esc, or q   Close this help screen and return to file editing
+  ^P, Up Arrow        Scroll up one line
+  ^N, Down Arrow      Scroll down one line
+  ^Y, Page Up         Scroll up one page
+  ^V, Page Down       Scroll down one page
+  M-\\, Home          Jump to beginning of help text
+  M-/, End            Jump to end of help text
+`;
+
+const MAIN_SHORTCUTS = [
+  ['^G', 'Help'], ['^O', 'Write Out'], ['^W', 'Where Is'], ['^K', 'Cut'],
+  ['^T', 'Execute'], ['^C', 'Location'], ['M-U', 'Undo'], ['M-A', 'Set Mark'],
+  ['^X', 'Exit'], ['^R', 'Read File'], ['^\\', 'Replace'], ['^U', 'Paste'],
+  ['^J', 'Justify'], ['^/', 'Go To Line'], ['M-E', 'Redo'], ['M-6', 'Copy']
+];
+
+const HELP_SHORTCUTS = [
+  ['^G', 'Close'], ['^P', 'Prev Line'], ['^Y', 'Prev Page'], ['M-\\', 'First Line'],
+  ['Up', 'Prev Line'], ['PgUp', 'Prev Page'], ['Home', 'First Line'], ['q', 'Close'],
+  ['^X', 'Close'], ['^N', 'Next Line'], ['^V', 'Next Page'], ['M-/', 'Last Line'],
+  ['Down', 'Next Line'], ['PgDn', 'Next Page'], ['End', 'Last Line'], ['Esc', 'Close']
+];
+
+const renderShortcuts = (shortcuts) => `
+  <div class="nano-shortcuts-grid">
+    ${shortcuts.map(([key, desc]) => `<div class="nano-shortcut"><span class="nano-key">${key}</span><span class="nano-desc">${desc}</span></div>`).join('')}
+  </div>
+`;
+
 class NanoEditor extends BaseEditor {
   constructor(shell, filename, initialContent, resolvedPath, onSave, onExit, isNewFile) {
     super(shell, filename, initialContent, resolvedPath, onSave, onExit, isNewFile);
     this.isPromptingSave = false;
+    this.isHelpMode = false;
+    this.helpScrollLine = 0;
     this.statusMessage = '';
     this.statusTimeout = null;
     this.cutBuffer = '';
@@ -31,9 +107,26 @@ class NanoEditor extends BaseEditor {
     this.lastKeyPress = '';
   }
 
+  getHelpLines() {
+    return NANO_HELP_TEXT.trim().split('\n');
+  }
+
+  scrollHelp(delta) {
+    const maxScroll = Math.max(0, this.getHelpLines().length - (this.maxVisibleLines || 20));
+    this.helpScrollLine = Math.max(0, Math.min(maxScroll, this.helpScrollLine + delta));
+    this.draw();
+  }
+
   start() {
     this.initDOM('nano-editor');
     super.start('.nano-content', '.nano-line', '<span class="color-dim">  1 │ </span><span>&nbsp;</span>');
+
+    this.container.addEventListener('wheel', (e) => {
+      if (this.isHelpMode) {
+        e.preventDefault();
+        this.scrollHelp(e.deltaY > 0 ? 3 : -3);
+      }
+    }, { passive: false });
 
     // Attach keydown listener to capture semantic checkpoints before key changes the text
     this.textarea.addEventListener('keydown', (e) => {
@@ -160,6 +253,25 @@ class NanoEditor extends BaseEditor {
 
   async handleKeydown(e) {
     const key = e.key.toLowerCase();
+
+    // In-Editor Help View Interception
+    if (this.isHelpMode) {
+      e.preventDefault();
+      if ((e.ctrlKey && (key === 'x' || key === 'g')) || e.key === 'Escape' || key === 'q') {
+        this.isHelpMode = false;
+        this.draw();
+        return;
+      }
+
+      const page = this.maxVisibleLines || 20;
+      if (e.key === 'ArrowUp' || (e.ctrlKey && key === 'p')) this.scrollHelp(-1);
+      else if (e.key === 'ArrowDown' || (e.ctrlKey && key === 'n')) this.scrollHelp(1);
+      else if (e.key === 'PageUp' || (e.ctrlKey && key === 'y')) this.scrollHelp(-page);
+      else if (e.key === 'PageDown' || (e.ctrlKey && key === 'v')) this.scrollHelp(page);
+      else if (e.key === 'Home' || (e.altKey && e.key === '\\')) this.scrollHelp(-Infinity);
+      else if (e.key === 'End' || (e.altKey && e.key === '/')) this.scrollHelp(Infinity);
+      return;
+    }
 
     // Keyclick audio & Cut Buffer Reset
     const ignoredKeys = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape'];
@@ -365,18 +477,9 @@ class NanoEditor extends BaseEditor {
     // Ctrl+G Help
     if (e.ctrlKey && key === 'g') {
       e.preventDefault();
-      alert(`GNU Nano Shortcuts Help:
-  Ctrl+G: Show Help
-  Ctrl+O: Save File (Write Out)
-  Ctrl+X: Exit Nano
-  Ctrl+K: Cut Selection / Line
-  Ctrl+U: Paste (Uncut)
-  Ctrl+W: Search Text (Where Is)
-  Ctrl+C: Show Location
-  Ctrl+/: Go to Line
-  Alt+6: Copy Selection / Line
-  Alt+U: Undo last change
-  Alt+E: Redo last change`);
+      this.isHelpMode = true;
+      this.helpScrollLine = 0;
+      this.draw();
       return;
     }
 
@@ -482,7 +585,9 @@ class NanoEditor extends BaseEditor {
     const currentVal = this.textarea.value;
     this.isModified = currentVal !== this.content;
 
-    this.adjustScroll(curLine);
+    if (!this.isHelpMode) {
+      this.adjustScroll(curLine);
+    }
 
     let headerEl = this.container.querySelector('.nano-header');
     let contentEl = this.container.querySelector('.nano-content');
@@ -499,38 +604,50 @@ class NanoEditor extends BaseEditor {
       footerEl = this.container.querySelector('.nano-footer');
     }
 
-    const modifiedText = this.isModified ? 'Modified' : '';
+    // Header
+    const headerTitle = this.isHelpMode ? 'Main nano help text' : this.filename;
+    const headerRight = this.isHelpMode ? '' : (this.isModified ? 'Modified' : '');
     const expectedHeaderHtml = `
       <span>GNU nano 6.7</span>
-      <span>${this.filename}</span>
-      <span>${modifiedText}</span>
+      <span>${headerTitle}</span>
+      <span>${headerRight}</span>
     `;
     if (headerEl.innerHTML !== expectedHeaderHtml) {
       headerEl.innerHTML = expectedHeaderHtml;
     }
 
+    // Body lines
+    const lines = this.isHelpMode ? this.getHelpLines() : rawLines;
     const maxVisibleLines = this.maxVisibleLines || 20;
-    const startLine = this.scrollTopLine;
-    const endLine = Math.min(totalLines, startLine + maxVisibleLines);
+    const startLine = this.isHelpMode ? this.helpScrollLine : this.scrollTopLine;
+    const endLine = Math.min(lines.length, startLine + maxVisibleLines);
 
     let html = '';
-    let currentIdx = 0;
-    for (let i = 0; i < startLine; i++) {
-      currentIdx += rawLines[i].length + 1;
-    }
-
-    for (let i = startLine; i < endLine; i++) {
-      const lineText = rawLines[i];
-      const isCurrent = i === curLine;
-      const lineNum = String(i + 1).padStart(3, ' ');
-      const escaped = this.escapeLine(lineText, currentIdx, selStart);
-      html += `<div class="nano-line ${isCurrent ? 'nano-line-active' : ''}"><span class="color-dim">${lineNum} │ </span>${escaped}</div>`;
-      currentIdx += lineText.length + 1;
+    if (this.isHelpMode) {
+      for (let i = startLine; i < endLine; i++) {
+        html += `<div class="nano-line">${this.escapeLine(lines[i]) || '&nbsp;'}</div>`;
+      }
+    } else {
+      let currentIdx = 0;
+      for (let i = 0; i < startLine; i++) {
+        currentIdx += rawLines[i].length + 1;
+      }
+      for (let i = startLine; i < endLine; i++) {
+        const lineText = rawLines[i];
+        const isCurrent = i === curLine;
+        const lineNum = String(i + 1).padStart(3, ' ');
+        const escaped = this.escapeLine(lineText, currentIdx, selStart);
+        html += `<div class="nano-line ${isCurrent ? 'nano-line-active' : ''}"><span class="color-dim">${lineNum} │ </span>${escaped}</div>`;
+        currentIdx += lineText.length + 1;
+      }
     }
     contentEl.innerHTML = html;
 
+    // Footer
     let expectedFooterHtml = '';
-    if (this.promptState) {
+    if (this.isHelpMode) {
+      expectedFooterHtml = renderShortcuts(HELP_SHORTCUTS);
+    } else if (this.promptState) {
       let promptLabel = '';
       if (this.promptState === 'SEARCH') promptLabel = 'Search for: ';
       else if (this.promptState === 'GO_TO_LINE') promptLabel = 'Enter line number: ';
@@ -538,46 +655,18 @@ class NanoEditor extends BaseEditor {
 
       expectedFooterHtml = `
         <div class="nano-prompt color-accent">${promptLabel}${this.promptInputText}<span class="terminal-cursor">&nbsp;</span></div>
-        <div class="nano-shortcuts-grid">
-          <div class="nano-shortcut"><span class="nano-key">^C</span><span class="nano-desc">Cancel</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^G</span><span class="nano-desc">Help</span></div>
-        </div>
+        ${renderShortcuts([['^C', 'Cancel'], ['^G', 'Help']])}
       `;
     } else if (this.isPromptingSave) {
       expectedFooterHtml = `
         <div class="nano-prompt color-accent">Save modified buffer? (Answering "No" will DISCARD changes.) [y/n/ctrl+c]</div>
-        <div class="nano-shortcuts-grid">
-          <div class="nano-shortcut"><span class="nano-key">Y</span><span class="nano-desc">Yes</span></div>
-          <div class="nano-shortcut"><span class="nano-key">N</span><span class="nano-desc">No</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^C</span><span class="nano-desc">Cancel</span></div>
-        </div>
+        ${renderShortcuts([['Y', 'Yes'], ['N', 'No'], ['^C', 'Cancel']])}
       `;
     } else {
       const statusLineHtml = this.statusMessage
         ? `<div class="nano-status color-accent">${this.statusMessage}</div>`
         : '';
-
-      expectedFooterHtml = `
-        ${statusLineHtml}
-        <div class="nano-shortcuts-grid">
-          <div class="nano-shortcut"><span class="nano-key">^G</span><span class="nano-desc">Help</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^O</span><span class="nano-desc">Write Out</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^W</span><span class="nano-desc">Where Is</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^K</span><span class="nano-desc">Cut</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^T</span><span class="nano-desc">Execute</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^C</span><span class="nano-desc">Location</span></div>
-          <div class="nano-shortcut"><span class="nano-key">M-U</span><span class="nano-desc">Undo</span></div>
-          <div class="nano-shortcut"><span class="nano-key">M-A</span><span class="nano-desc">Set Mark</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^X</span><span class="nano-desc">Exit</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^R</span><span class="nano-desc">Read File</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^\\</span><span class="nano-desc">Replace</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^U</span><span class="nano-desc">Paste</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^J</span><span class="nano-desc">Justify</span></div>
-          <div class="nano-shortcut"><span class="nano-key">^/</span><span class="nano-desc">Go To Line</span></div>
-          <div class="nano-shortcut"><span class="nano-key">M-E</span><span class="nano-desc">Redo</span></div>
-          <div class="nano-shortcut"><span class="nano-key">M-6</span><span class="nano-desc">Copy</span></div>
-        </div>
-      `;
+      expectedFooterHtml = statusLineHtml + renderShortcuts(MAIN_SHORTCUTS);
     }
 
     if (footerEl.innerHTML !== expectedFooterHtml) {
