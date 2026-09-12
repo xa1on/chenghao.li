@@ -5,21 +5,50 @@ export const tetris = {
   description: 'Play a game of Tetris.',
   category: 'game',
   lazy: true,
-  args: [],
+  args: [
+    { name: '--cols, -c', description: 'Number of columns (default: 10, min: 4, max: 50).', required: false },
+    { name: '--rows, -r', description: 'Number of rows (default: 20, min: 20, max: 60).', required: false }
+  ],
   run: async (args, shell) => {
+    let COLS = 10;
+    let ROWS = 20;
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg === '--cols' || arg === '-c' || arg === '--width' || arg === '-w') {
+        const val = parseInt(args[i + 1], 10);
+        if (!isNaN(val)) {
+          COLS = val;
+          i++;
+        }
+      } else if (arg === '--rows' || arg === '-r' || arg === '--height' || arg === '-h') {
+        const val = parseInt(args[i + 1], 10);
+        if (!isNaN(val)) {
+          ROWS = val;
+          i++;
+        }
+      }
+    }
+
+    if (isNaN(COLS) || COLS < 4 || COLS > 50) {
+      shell.print('tetris: columns must be between 4 and 50', 'color-error');
+      return;
+    }
+    if (isNaN(ROWS) || ROWS < 20 || ROWS > 60) {
+      shell.print('tetris: rows must be between 20 and 60', 'color-error');
+      return;
+    }
+
     // Enter gameplay state
     shell.loginState = 'GAME';
 
-    const highscoreKey = 'tetris_highscore';
+    const highscoreKey = (COLS === 10 && ROWS === 20) ? 'tetris_highscore' : `tetris_highscore_${COLS}x${ROWS}`;
     let highscore = 0;
     try {
       highscore = parseInt(localStorage.getItem(highscoreKey) || '0', 10);
     } catch (_) { }
 
     return new Promise((resolve) => {
-
-      const COLS = 10;
-      const ROWS = 20;
 
       const SHAPES = {
         I: [
@@ -247,6 +276,8 @@ export const tetris = {
             sideInfo = `  <span class="color-accent">${level}</span>`;
           } else if (y === 19) {
             sideInfo = `  C:Hold/Up:Rot/Space:Drop`;
+          } else if (y === 20 && (COLS !== 10 || ROWS !== 20)) {
+            sideInfo = `  SIZE:     ${COLS}x${ROWS}`;
           }
 
           line += sideInfo + '\n';
