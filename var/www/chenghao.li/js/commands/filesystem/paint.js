@@ -150,9 +150,10 @@ class PaintEditor {
     // Mouse drawing state
     this.isMouseDown = false;
     this.lastMousePos = { x: -1, y: -1 };
+    this.lastClickPos = { x: -1, y: -1 };
 
-    // Standard blocks
-    this.blocks = ['█', '▓', '▒', '░', '▀', '▄'];
+    // Brushes: 6 standard block characters plus the most recent custom character (default empty)
+    this.brushes = ['█', '▓', '▒', '░', '▀', '▄', ' '];
     // Brush color options
     this.brushColors = [
       'white', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan',
@@ -167,7 +168,7 @@ class PaintEditor {
 
     // Toolbar element references for O(1) toolbar rendering updates
     this.toolDOMs = {};
-    this.blockDOMs = [];
+    this.brushDOMs = [];
     this.colorDOMs = {};
     this.bgColorDOMs = {};
 
@@ -368,7 +369,7 @@ class PaintEditor {
   }
 
   setupDOM() {
-    const colorHelp = this.isColorSupported ? '<div class="paint-help-item"><span class="paint-help-key">c</span> Cycle Brush Color</div><div class="paint-help-item"><span class="paint-help-key">v</span> Cycle Background Color</div>' : '';
+    const colorHelp = this.isColorSupported ? '<div class="paint-help-item"><span class="paint-help-key">Alt+c</span> Brush Color</div><div class="paint-help-item"><span class="paint-help-key">Alt+v</span> Background Color</div>' : '';
 
     this.container.innerHTML = `
       <div class="paint-header" id="paint-header"></div>
@@ -389,17 +390,17 @@ class PaintEditor {
         <div class="paint-normal-footer" id="paint-normal-footer" style="display: flex; flex-direction: column;">
           <div class="paint-toolbar" id="paint-toolbar"></div>
           <div class="paint-help-grid">
-            <div class="paint-help-item"><span class="paint-help-key">Arrows/WASD</span> Move</div>
+            <div class="paint-help-item"><span class="paint-help-key">Arrows</span> Move</div>
             <div class="paint-help-item"><span class="paint-help-key">Space</span> Draw</div>
             <div class="paint-help-item"><span class="paint-help-key">Enter</span> Toggle Autodraw</div>
-            <div class="paint-help-item"><span class="paint-help-key">Shift+Move</span> Line Draw</div>
-            <div class="paint-help-item"><span class="paint-help-key">Backspace/0</span> Erase</div>
-            <div class="paint-help-item"><span class="paint-help-key">1-6</span> Select Blocks</div>
-            <div class="paint-help-item"><span class="paint-help-key">Any Key</span> Custom Brush</div>
+            <div class="paint-help-item"><span class="paint-help-key">Shift+Click</span> Line Draw</div>
+            <div class="paint-help-item"><span class="paint-help-key">Backspace</span> Erase</div>
+            <div class="paint-help-item"><span class="paint-help-key">Alt+1-7</span> Brushes</div>
+            <div class="paint-help-item"><span class="paint-help-key">Any Key</span> Brush Char</div>
             ${colorHelp}
-            <div class="paint-help-item"><span class="paint-help-key">t</span> Cycle Tool</div>
-            <div class="paint-help-item"><span class="paint-help-key">+/-</span> Zoom Canvas</div>
-            <div class="paint-help-item"><span class="paint-help-key">u/r</span> Undo/Redo</div>
+            <div class="paint-help-item"><span class="paint-help-key">Tab</span> Tool</div>
+            <div class="paint-help-item"><span class="paint-help-key">Alt++/-</span> Zoom</div>
+            <div class="paint-help-item"><span class="paint-help-key">Ctrl+z/y</span> Undo/Redo</div>
             <div class="paint-help-item"><span class="paint-help-key">Ctrl+s/q</span> Save/Quit</div>
           </div>
         </div>
@@ -432,7 +433,19 @@ class PaintEditor {
       this.cursorY = y;
 
       const isRightClick = e.button === 2 || e.buttons === 2;
-      this.applyAction(x, y, isRightClick);
+
+      // Shift+Click: draw straight line connecting previous click to this click
+      if (e.shiftKey && this.lastClickPos.x !== -1) {
+        const points = this.getLinePoints(this.lastClickPos.x, this.lastClickPos.y, x, y);
+        for (const p of points) {
+          this.applyAction(p.x, p.y, isRightClick);
+          this.updateCellDOM(p.x, p.y);
+        }
+      } else {
+        this.applyAction(x, y, isRightClick);
+      }
+
+      this.lastClickPos = { x, y };
       this.updateCellDOM(oldX, oldY);
       this.updateCellDOM(x, y);
       this.drawHeader();
@@ -461,6 +474,7 @@ class PaintEditor {
         } else {
           this.applyAction(x, y, isRightClick);
         }
+        this.lastClickPos = { x, y };
       }
       this.updateCellDOM(oldX, oldY);
       this.updateCellDOM(x, y);
@@ -474,8 +488,8 @@ class PaintEditor {
       if (!btn) return;
       if (btn.dataset.tool) {
         this.selectTool(btn.dataset.tool);
-      } else if (btn.dataset.block) {
-        this.selectBlock(btn.dataset.block);
+      } else if (btn.dataset.brush) {
+        this.selectBrush(btn.dataset.brush);
       } else if (btn.dataset.color) {
         this.selectColor(btn.dataset.color);
       } else if (btn.dataset.bg) {
@@ -711,10 +725,10 @@ class PaintEditor {
       toolsHtml += `<span class="paint-option-btn" id="tool-btn-${t}" data-tool="${t}"></span>`;
     }
 
-    let blocksHtml = '';
-    for (let i = 0; i < this.blocks.length; i++) {
-      const b = this.blocks[i];
-      blocksHtml += `<span class="paint-option-btn" id="block-btn-${i}" data-block="${b}"></span>`;
+    let brushesHtml = '';
+    for (let i = 0; i < this.brushes.length; i++) {
+      const b = this.brushes[i];
+      brushesHtml += `<span class="paint-option-btn" id="brush-btn-${i}" data-brush="${b}"></span>`;
     }
 
     let colorsRowHtml = '';
@@ -758,8 +772,8 @@ class PaintEditor {
         <div class="paint-options">${toolsHtml}</div>
       </div>
       <div class="paint-toolbar-row">
-        <span class="paint-label">BLOCKS:</span>
-        <div class="paint-options">${blocksHtml}</div>
+        <span class="paint-label">BRUSHES:</span>
+        <div class="paint-options">${brushesHtml}</div>
       </div>
       ${colorsRowHtml}
       ${bgColorsRowHtml}
@@ -768,8 +782,8 @@ class PaintEditor {
     for (const t of tools) {
       this.toolDOMs[t] = this.container.querySelector(`#tool-btn-${t}`);
     }
-    for (let i = 0; i < this.blocks.length; i++) {
-      this.blockDOMs[i] = this.container.querySelector(`#block-btn-${i}`);
+    for (let i = 0; i < this.brushes.length; i++) {
+      this.brushDOMs[i] = this.container.querySelector(`#brush-btn-${i}`);
     }
     if (this.isColorSupported) {
       for (const c of this.brushColors) {
@@ -799,15 +813,19 @@ class PaintEditor {
       }
     }
 
-    for (let i = 0; i < this.blocks.length; i++) {
-      const b = this.blocks[i];
-      const el = this.blockDOMs[i];
+    for (let i = 0; i < this.brushes.length; i++) {
+      const b = this.brushes[i];
+      const el = this.brushDOMs[i];
       if (!el) continue;
       const isActive = this.activeChar === b;
-      const displayLabel = isActive ? `[${i + 1}:${b}]` : `${i + 1}:${b}`;
+      const charDisplay = b === ' ' ? ' ' : b;
+      const displayLabel = isActive ? `[${i + 1}:${charDisplay}]` : `${i + 1}:${charDisplay}`;
 
       if (el.textContent !== displayLabel) {
         el.textContent = displayLabel;
+      }
+      if (el.dataset.brush !== b) {
+        el.dataset.brush = b;
       }
       if (el.classList.contains('active') !== isActive) {
         el.classList.toggle('active', isActive);
@@ -868,9 +886,9 @@ class PaintEditor {
     this.drawToolbar();
   }
 
-  selectBlock(b) {
+  selectBrush(b) {
     this.activeChar = b;
-    if (this.activeTool === 'eraser') {
+    if (this.activeTool === 'eraser' && b !== ' ') {
       this.activeTool = 'pencil';
     }
     audio.playKeyclick('b');
@@ -915,30 +933,56 @@ class PaintEditor {
 
     const key = e.key;
 
+    // Ctrl+S Save
     if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 's') {
       e.preventDefault();
       this.saveFile();
       return;
     }
 
-    if ((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'c') {
+    // Ctrl+C, Ctrl+Q, Escape to Exit / Confirm Exit
+    if (((e.ctrlKey || e.metaKey) && (key.toLowerCase() === 'c' || key.toLowerCase() === 'q')) || key === 'Escape') {
       e.preventDefault();
       this.confirmExit();
       return;
     }
 
-    if (key >= '1' && key <= '6') {
+    // Undo: Ctrl+Z or Alt+U
+    if (((e.ctrlKey || e.metaKey) && key.toLowerCase() === 'z' && !e.shiftKey) || (e.altKey && key.toLowerCase() === 'u')) {
       e.preventDefault();
-      this.activeChar = this.blocks[parseInt(key, 10) - 1];
-      if (this.activeTool === 'eraser') {
-        this.activeTool = 'pencil';
-      }
-      audio.playKeyclick(key);
-      this.drawToolbar();
+      this.undo();
       return;
     }
 
-    if (key === '0') {
+    // Redo: Ctrl+Y, Ctrl+Shift+Z, or Alt+R
+    if (((e.ctrlKey || e.metaKey) && (key.toLowerCase() === 'y' || (key.toLowerCase() === 'z' && e.shiftKey))) || (e.altKey && key.toLowerCase() === 'r')) {
+      e.preventDefault();
+      this.redo();
+      return;
+    }
+
+    // Select Brushes: Alt + 1-7
+    if (e.altKey && key >= '1' && key <= '7') {
+      e.preventDefault();
+      const idx = parseInt(key, 10) - 1;
+      if (idx < this.brushes.length) {
+        this.selectBrush(this.brushes[idx]);
+      }
+      return;
+    }
+
+    // Cycle Brushes: Alt + B
+    if (e.altKey && key.toLowerCase() === 'b') {
+      e.preventDefault();
+      const idx = this.brushes.indexOf(this.activeChar);
+      const dir = e.shiftKey ? -1 : 1;
+      const nextIdx = (idx + dir + this.brushes.length) % this.brushes.length;
+      this.selectBrush(this.brushes[nextIdx]);
+      return;
+    }
+
+    // Select Eraser: Alt + 0 or Alt + E
+    if (e.altKey && (key === '0' || key.toLowerCase() === 'e')) {
       e.preventDefault();
       this.activeTool = 'eraser';
       audio.playKeyclick('0');
@@ -946,6 +990,7 @@ class PaintEditor {
       return;
     }
 
+    // Enter: Toggle Autodraw
     if (key === 'Enter') {
       e.preventDefault();
       this.autoDraw = !this.autoDraw;
@@ -959,6 +1004,7 @@ class PaintEditor {
       return;
     }
 
+    // Space: Draw
     if (key === ' ') {
       e.preventDefault();
       this.saveSnapshot();
@@ -967,6 +1013,7 @@ class PaintEditor {
       return;
     }
 
+    // Backspace: Erase under cursor
     if (key === 'Backspace') {
       e.preventDefault();
       this.saveSnapshot();
@@ -979,39 +1026,46 @@ class PaintEditor {
       return;
     }
 
-    if (key === 'c' && !e.ctrlKey && !e.metaKey) {
+    // Cycle Brush Color: Alt+C
+    if (e.altKey && key.toLowerCase() === 'c') {
       if (this.isColorSupported) {
         e.preventDefault();
         const idx = this.brushColors.indexOf(this.activeColor);
-        this.activeColor = this.brushColors[(idx + 1) % this.brushColors.length];
+        const dir = e.shiftKey ? -1 : 1;
+        this.activeColor = this.brushColors[(idx + dir + this.brushColors.length) % this.brushColors.length];
         audio.playKeyclick('c');
         this.drawToolbar();
       }
       return;
     }
 
-    if (key === 'v' && !e.ctrlKey && !e.metaKey) {
+    // Cycle Background Color: Alt+V
+    if (e.altKey && key.toLowerCase() === 'v') {
       if (this.isColorSupported) {
         e.preventDefault();
         const idx = this.bgColors.indexOf(this.activeBgColor);
-        this.activeBgColor = this.bgColors[(idx + 1) % this.bgColors.length];
+        const dir = e.shiftKey ? -1 : 1;
+        this.activeBgColor = this.bgColors[(idx + dir + this.bgColors.length) % this.bgColors.length];
         audio.playKeyclick('v');
         this.drawToolbar();
       }
       return;
     }
 
-    if (key === 't') {
+    // Cycle Tool: Tab or Alt+T
+    if (key === 'Tab' || (e.altKey && key.toLowerCase() === 't')) {
       e.preventDefault();
       const tools = ['pencil', 'eraser', 'bucket'];
       const idx = tools.indexOf(this.activeTool);
-      this.activeTool = tools[(idx + 1) % tools.length];
+      const dir = e.shiftKey ? -1 : 1;
+      this.activeTool = tools[(idx + dir + tools.length) % tools.length];
       audio.playKeyclick('t');
       this.drawToolbar();
       return;
     }
 
-    if (key === '+' || key === '=') {
+    // Zoom Canvas In: Alt+=, Alt++, Ctrl+=, Ctrl++
+    if ((e.altKey || e.ctrlKey || e.metaKey) && (key === '+' || key === '=')) {
       e.preventDefault();
       if (this.fontSize < 36) {
         this.fontSize += 2;
@@ -1020,7 +1074,9 @@ class PaintEditor {
       }
       return;
     }
-    if (key === '-') {
+
+    // Zoom Canvas Out: Alt+-, Ctrl+-
+    if ((e.altKey || e.ctrlKey || e.metaKey) && key === '-') {
       e.preventDefault();
       if (this.fontSize > 8) {
         this.fontSize -= 2;
@@ -1030,32 +1086,15 @@ class PaintEditor {
       return;
     }
 
-    if (key === 'u') {
-      e.preventDefault();
-      this.undo();
-      return;
-    }
-    if (key === 'r') {
-      e.preventDefault();
-      this.redo();
-      return;
-    }
-
-    if (key === 'q') {
-      e.preventDefault();
-      this.confirmExit();
-      return;
-    }
-
     let dx = 0;
     let dy = 0;
-    if (key === 'ArrowUp' || key === 'w' || key === 'W') {
+    if (key === 'ArrowUp') {
       dy = -1;
-    } else if (key === 'ArrowDown' || key === 's' || key === 'S') {
+    } else if (key === 'ArrowDown') {
       dy = 1;
-    } else if (key === 'ArrowLeft' || key === 'a' || key === 'A') {
+    } else if (key === 'ArrowLeft') {
       dx = -1;
-    } else if (key === 'ArrowRight' || key === 'd' || key === 'D') {
+    } else if (key === 'ArrowRight') {
       dx = 1;
     }
 
@@ -1083,6 +1122,7 @@ class PaintEditor {
     if (key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       this.activeChar = key;
+      this.brushes[this.brushes.length - 1] = key;
       this.activeTool = 'pencil';
       audio.playKeyclick(key);
       this.showStatus(`Brush character set to: '${key}'`);
