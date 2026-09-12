@@ -638,11 +638,11 @@ export class Shell {
         if (args.length < requiredArgs.length) {
           const missingArg = requiredArgs[args.length];
           let usage = cmd.name;
-          const argUsageStrings = cmd.args.map(a => a.required ? `<${a.name}>` : `[${a.name}]`);
+          const argUsageStrings = cmd.args.map(a => a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`);
           if (argUsageStrings.length > 0) {
             usage += ' ' + argUsageStrings.join(' ');
           }
-          this.print(`${command}: missing required argument &lt;${missingArg.name}&gt;. Usage: <span class="color-green">${usage}</span>`, 'color-error');
+          this.print(`${command}: missing required argument &lt;${escapeHTML(missingArg.name)}&gt;. Usage: <span class="color-green">${usage}</span>`, 'color-error');
           return;
         }
       }

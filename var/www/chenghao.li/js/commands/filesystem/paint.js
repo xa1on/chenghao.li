@@ -11,11 +11,6 @@ export const paint = {
     { name: '--height, -h', description: 'Override the canvas height (optional).', required: false }
   ],
   run: async (args, shell) => {
-    if (args.length === 0) {
-      shell.print('paint: missing filename operand. Usage: paint [filename] [-w width] [-h height]', 'color-error');
-      return;
-    }
-
     let fileArg = null;
     let widthOverride = null;
     let heightOverride = null;
@@ -40,7 +35,7 @@ export const paint = {
     }
 
     if (!fileArg) {
-      shell.print('paint: missing filename operand. Usage: paint [filename] [-w width] [-h height]', 'color-error');
+      shell.print('paint: missing required argument &lt;filename&gt;. Usage: <span class="color-green">paint &lt;filename&gt; [--width, -w] [--height, -h]</span>', 'color-error');
       return;
     }
 

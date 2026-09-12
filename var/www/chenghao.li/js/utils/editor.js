@@ -196,11 +196,6 @@ export class BaseEditor {
 }
 
 export async function runEditor(EditorClass, args, cmdName, shell) {
-  if (args.length === 0) {
-    shell.print(`${cmdName}: missing filename operand. Usage: ${cmdName} [filename]`, 'color-error');
-    return;
-  }
-
   let fileArg = args[0].trim();
   while (fileArg.endsWith('/') && fileArg.length > 1) {
     fileArg = fileArg.slice(0, -1);
