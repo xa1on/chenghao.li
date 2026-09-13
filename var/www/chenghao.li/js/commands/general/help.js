@@ -8,6 +8,53 @@ export const help = {
   run: async (args, shell) => {
     if (args.length > 0) {
       const targetCmdName = args[0].toLowerCase();
+      if (targetCmdName === 'shortcuts' || targetCmdName === 'keybinds' || targetCmdName === 'keys') {
+        const shortcutsHelp = `
+<span class="blue" style="font-weight: bold;">SSH Terminal & GNU Readline Shortcuts</span>
+
+<span class="color-accent">Cursor Movement:</span>
+  <span class="color-green">Ctrl+A</span> / <span class="color-green">Home</span>         Move cursor to beginning of line
+  <span class="color-green">Ctrl+E</span> / <span class="color-green">End</span>          Move cursor to end of line
+  <span class="color-green">Ctrl+B</span> / <span class="color-green">ArrowLeft</span>    Move cursor back one character
+  <span class="color-green">Ctrl+F</span> / <span class="color-green">ArrowRight</span>   Move cursor forward one character
+  <span class="color-green">Alt+B</span>  / <span class="color-green">Ctrl+Left</span>    Move cursor backward one word
+  <span class="color-green">Alt+F</span>  / <span class="color-green">Ctrl+Right</span>   Move cursor forward one word
+
+<span class="color-accent">Line Editing & Kill-Ring:</span>
+  <span class="color-green">Ctrl+U</span>                Cut from cursor to beginning of line
+  <span class="color-green">Ctrl+K</span>                Cut from cursor to end of line
+  <span class="color-green">Ctrl+W</span> / <span class="color-green">Alt+Bksp</span>     Cut backward word before cursor
+  <span class="color-green">Alt+D</span>                 Cut forward word after cursor
+  <span class="color-green">Ctrl+Y</span>                Yank (paste) most recently cut text
+  <span class="color-green">Ctrl+H</span> / <span class="color-green">Backspace</span>    Delete character before cursor
+  <span class="color-green">Ctrl+D</span> / <span class="color-green">Delete</span>       Delete character under cursor (at empty line: exit notice)
+  <span class="color-green">Ctrl+T</span>                Transpose previous character with character at cursor
+  <span class="color-green">Alt+T</span>                 Transpose previous word with next word
+  <span class="color-green">Alt+U</span> / <span class="color-green">Alt+L</span> / <span class="color-green">Alt+C</span>  Uppercase / lowercase / capitalize word
+
+<span class="color-accent">History & Search:</span>
+  <span class="color-green">Ctrl+P</span> / <span class="color-green">ArrowUp</span>      Previous command in history
+  <span class="color-green">Ctrl+N</span> / <span class="color-green">ArrowDown</span>    Next command in history
+  <span class="color-green">Ctrl+R</span>                <span class="color-accent">Reverse incremental history search</span> (bck-i-search)
+  <span class="color-green">Alt+.</span>  / <span class="color-green">Alt+_</span>        Yank last argument of previous command (repeat to cycle)
+  <span class="color-green">Alt+&lt;</span>  / <span class="color-green">Alt+&gt;</span>        Jump to oldest / newest command in history
+
+<span class="color-accent">Screen & Signals:</span>
+  <span class="color-green">Ctrl+L</span>                Clear screen (preserves current input line at top)
+  <span class="color-green">Ctrl+C</span>                Cancel active command, sub-prompt, or current line (^C)
+  <span class="color-green">Ctrl+Z</span>                Suspend process signal (^Z)
+  <span class="color-green">Tab</span>                   Autocomplete commands and file paths
+
+<span class="color-accent">Mouse & Scrolling:</span>
+  <span class="color-green">Select text</span>           Auto-copy selection to clipboard (X11 style)
+  <span class="color-green">Right-click / Middle</span>  Paste clipboard text into terminal
+  <span class="color-green">Shift+PgUp / PgDn</span>     Scroll terminal buffer up / down
+  <span class="color-green">Shift+Home / End</span>      Scroll terminal buffer to top / bottom
+`;
+        shell.print(shortcutsHelp.trim());
+        return;
+      }
+
       const cmd = shell.commands[targetCmdName];
       if (!cmd) {
         shell.print(`help: command not found: ${targetCmdName}`, 'color-error');
@@ -77,6 +124,7 @@ export const help = {
         output += '\n';
       }
     }
+    output += `\n<span class="color-dim">Tip: Type '</span><span class="blue cmd-link" data-cmd="help shortcuts">help shortcuts</span><span class="color-dim">' to view all SSH terminal keybinds & Readline shortcuts.</span>`;
     shell.print(output);
   }
 };

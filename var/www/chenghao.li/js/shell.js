@@ -83,6 +83,57 @@ function parseArgs(cmdStr) {
   return args;
 }
 
+function splitCommandChains(str) {
+  const commands = [];
+  let current = '';
+  let inDoubleQuote = false;
+  let inSingleQuote = false;
+  let escaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      current += char;
+      continue;
+    }
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      current += char;
+      continue;
+    }
+
+    if (!inDoubleQuote && !inSingleQuote) {
+      if (char === ';') {
+        if (current.trim()) commands.push(current.trim());
+        current = '';
+        continue;
+      }
+      if (char === '&' && str[i + 1] === '&') {
+        if (current.trim()) commands.push(current.trim());
+        current = '';
+        i++;
+        continue;
+      }
+    }
+    current += char;
+  }
+  if (current.trim()) {
+    commands.push(current.trim());
+  }
+  return commands;
+}
+
 export class Shell {
   constructor(options = {}) {
     this.body = document.getElementById('terminal-body');
@@ -119,6 +170,88 @@ export class Shell {
     this.onConnect = options.onConnect || null;
     this.typewriterDelay = options.typewriterDelay !== undefined ? options.typewriterDelay : (options.typeSpeed !== undefined ? options.typeSpeed : TYPEWRITER_DEFAULT_DELAY);
     this.placeholder = document.getElementById('input-placeholder');
+
+    // Readline editing and search state
+    this.killRing = '';
+    this.searchMode = false;
+    this.searchQuery = '';
+    this.searchMatch = '';
+    this.searchMatchIndex = -1;
+    this.searchFailed = false;
+    this.searchSavedInput = '';
+    this.searchSavedCursor = 0;
+    this.lastArgCycleIndex = -1;
+    this.lastInsertedArgLen = 0;
+    this.historyDraft = '';
+    this.lastActionWasKill = false;
+  }
+
+  setInputValue(newVal, newCursorPos = null) {
+    this.input.value = newVal;
+    const pos = newCursorPos !== null ? Math.max(0, Math.min(newVal.length, newCursorPos)) : newVal.length;
+    this.input.setSelectionRange(pos, pos);
+    this.updateInputDisplay(newVal);
+  }
+
+  getPrevWordPos(text, pos) {
+    if (pos <= 0) return 0;
+    let i = pos;
+    while (i > 0 && /\s/.test(text[i - 1])) i--;
+    while (i > 0 && !/\s/.test(text[i - 1])) i--;
+    return i;
+  }
+
+  getNextWordPos(text, pos) {
+    if (pos >= text.length) return text.length;
+    let i = pos;
+    while (i < text.length && !/\s/.test(text[i])) i++;
+    while (i < text.length && /\s/.test(text[i])) i++;
+    return i;
+  }
+
+  findSearchMatch(query, startIdx) {
+    if (!query) return startIdx >= 0 && startIdx < this.commandHistory.length ? startIdx : -1;
+    const qLower = query.toLowerCase();
+    for (let i = startIdx; i >= 0; i--) {
+      if (this.commandHistory[i].toLowerCase().includes(qLower)) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  updateSearchDisplay() {
+    const failedText = this.searchFailed ? 'failed ' : '';
+    this.promptPrefix.innerHTML = `<span class="color-accent">(${failedText}reverse-i-search)\`${this.escapeHTML(this.searchQuery)}\`: </span>`;
+
+    const match = this.searchMatch || '';
+    if (this.searchQuery && match) {
+      const qLower = this.searchQuery.toLowerCase();
+      const matchLower = match.toLowerCase();
+      const idx = matchLower.indexOf(qLower);
+      if (idx !== -1) {
+        const before = this.escapeHTML(match.slice(0, idx));
+        const matched = this.escapeHTML(match.slice(idx, idx + this.searchQuery.length));
+        const after = this.escapeHTML(match.slice(idx + this.searchQuery.length));
+        this.inputDisplay.innerHTML = `${before}<span class="color-dir" style="text-decoration: underline;">${matched}</span>${after}<span class="terminal-cursor" id="cursor">&nbsp;</span>`;
+      } else {
+        this.inputDisplay.innerHTML = `${this.escapeHTML(match)}<span class="terminal-cursor" id="cursor">&nbsp;</span>`;
+      }
+    } else {
+      this.inputDisplay.innerHTML = `${this.escapeHTML(match)}<span class="terminal-cursor" id="cursor">&nbsp;</span>`;
+    }
+  }
+
+  exitSearchMode(cancel = false) {
+    this.searchMode = false;
+    this.searchQuery = '';
+    this.searchFailed = false;
+    this.searchMatch = '';
+    this.searchMatchIndex = -1;
+    this.promptPrefix.innerHTML = this.getPromptHtml();
+    if (cancel) {
+      this.setInputValue(this.searchSavedInput, this.searchSavedCursor);
+    }
   }
 
   getPromptHtml(promptSuffix = this.promptSymbol, displayPath = this.formatDisplayPath()) {
@@ -267,15 +400,11 @@ export class Shell {
       }
     });
 
-    // Special keyboard listeners (Enter, Up, Down, Tab)
+    // Special keyboard listeners (GNU Readline Emacs Mode & Terminal Control)
     this.input.addEventListener('keydown', async (e) => {
       if (this.loginState !== 'LOGGED_IN' || this.isBooting) return;
 
-      const ignoredKeys = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape'];
-      if (!ignoredKeys.includes(e.key)) {
-        audio.playKeyclick(e.key);
-      }
-
+      // 1. ReadInput Sub-Prompt Handling
       if (this.activeInputResolver) {
         if (e.key === 'Enter') {
           const val = this.input.value;
@@ -287,47 +416,473 @@ export class Shell {
           resolve(val);
         } else if (e.key === 'Tab') {
           e.preventDefault();
+        } else if (e.ctrlKey && e.key.toLowerCase() === 'u') {
+          e.preventDefault();
+          this.setInputValue('', 0);
+        } else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
+          e.preventDefault();
+          this.setInputValue(this.input.value, 0);
+        } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
+          e.preventDefault();
+          this.setInputValue(this.input.value, this.input.value.length);
         }
         return;
       }
 
-      if (e.key === 'Enter') {
+      // 2. Reverse Incremental History Search ((reverse-i-search)`query`: match)
+      if (this.searchMode) {
+        if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+          e.preventDefault();
+          const nextIdx = this.findSearchMatch(this.searchQuery, this.searchMatchIndex - 1);
+          if (nextIdx !== -1) {
+            this.searchMatchIndex = nextIdx;
+            this.searchMatch = this.commandHistory[nextIdx];
+            this.searchFailed = false;
+          } else {
+            this.searchFailed = true;
+          }
+          this.updateSearchDisplay();
+          return;
+        }
+
+        if (e.key === 'Backspace') {
+          e.preventDefault();
+          this.searchQuery = this.searchQuery.slice(0, -1);
+          const matchIdx = this.findSearchMatch(this.searchQuery, this.commandHistory.length - 1);
+          if (matchIdx !== -1) {
+            this.searchMatchIndex = matchIdx;
+            this.searchMatch = this.commandHistory[matchIdx];
+            this.searchFailed = false;
+          } else {
+            this.searchFailed = !!this.searchQuery;
+            if (!this.searchQuery) this.searchMatch = '';
+          }
+          this.updateSearchDisplay();
+          return;
+        }
+
+        if (e.key === 'Enter' || (e.ctrlKey && (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'm'))) {
+          e.preventDefault();
+          const chosenCmd = this.searchMatch;
+          this.exitSearchMode(false);
+          this.setInputValue('', 0);
+          if (chosenCmd) {
+            await this.handleInputSubmit(chosenCmd);
+          }
+          return;
+        }
+
+        if (e.key === 'Escape' || (e.ctrlKey && (e.key.toLowerCase() === 'g' || e.key.toLowerCase() === 'c'))) {
+          e.preventDefault();
+          this.exitSearchMode(true);
+          return;
+        }
+
+        // Accept command for editing at the prompt
+        if (e.key === 'Tab' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || (e.ctrlKey && (e.key.toLowerCase() === 'a' || e.key.toLowerCase() === 'e'))) {
+          e.preventDefault();
+          const matchedCmd = this.searchMatch;
+          this.exitSearchMode(false);
+          const cursorPos = (e.key === 'ArrowLeft' || (e.ctrlKey && e.key.toLowerCase() === 'a')) ? 0 : matchedCmd.length;
+          this.setInputValue(matchedCmd, cursorPos);
+          return;
+        }
+
+        // Printable search query characters
+        if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+          e.preventDefault();
+          this.searchQuery += e.key;
+          const matchIdx = this.findSearchMatch(this.searchQuery, this.commandHistory.length - 1);
+          if (matchIdx !== -1) {
+            this.searchMatchIndex = matchIdx;
+            this.searchMatch = this.commandHistory[matchIdx];
+            this.searchFailed = false;
+          } else {
+            this.searchFailed = true;
+          }
+          this.updateSearchDisplay();
+          return;
+        }
+
+        e.preventDefault();
+        return;
+      }
+
+      // Reset Alt+. cycling if any other key is pressed
+      if (!(e.altKey && (e.key === '.' || e.key === '_'))) {
+        this.lastArgCycleIndex = -1;
+      }
+
+      // Audio typing clicks
+      const ignoredKeys = ['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Escape'];
+      if (!ignoredKeys.includes(e.key) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        audio.playKeyclick(e.key);
+      }
+
+      // 3. Viewport Scroll Shortcuts
+      if (e.key === 'PageUp') {
+        e.preventDefault();
+        this.body.scrollBy({ top: -this.body.clientHeight * 0.75, behavior: 'smooth' });
+        return;
+      }
+      if (e.key === 'PageDown') {
+        e.preventDefault();
+        this.body.scrollBy({ top: this.body.clientHeight * 0.75, behavior: 'smooth' });
+        return;
+      }
+      if (e.shiftKey && e.key === 'Home') {
+        e.preventDefault();
+        this.body.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      if (e.shiftKey && e.key === 'End') {
+        e.preventDefault();
+        this.body.scrollTo({ top: this.body.scrollHeight, behavior: 'smooth' });
+        return;
+      }
+
+      // 4. Screen & Terminal Controls
+      if (e.ctrlKey && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        const currentVal = this.input.value;
+        const currentPos = this.input.selectionStart || 0;
+        this.clear();
+        this.promptPrefix.innerHTML = this.getPromptHtml();
+        this.setInputValue(currentVal, currentPos);
+        this.focus();
+        return;
+      }
+
+      if (e.ctrlKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (this.isExecutingCommand) {
+          this.abortSignal = true;
+          this.print('^Z\n[1]+  Stopped', 'color-dim');
+        } else {
+          this.print('^Z', 'color-dim');
+          this.updatePrompt();
+        }
+        return;
+      }
+
+      // 5. History Incremental Search (Ctrl+R)
+      if (e.ctrlKey && e.key.toLowerCase() === 'r') {
+        e.preventDefault();
+        this.searchMode = true;
+        this.searchQuery = '';
+        this.searchMatch = '';
+        this.searchMatchIndex = -1;
+        this.searchFailed = false;
+        this.searchSavedInput = this.input.value;
+        this.searchSavedCursor = this.input.selectionStart || 0;
+        this.updateSearchDisplay();
+        return;
+      }
+
+      // 6. Cursor Navigation
+      // Ctrl+A / Home: Beginning of line
+      if ((e.ctrlKey && e.key.toLowerCase() === 'a') || (!e.ctrlKey && !e.altKey && e.key === 'Home')) {
+        e.preventDefault();
+        this.setInputValue(this.input.value, 0);
+        return;
+      }
+
+      // Ctrl+E / End: End of line
+      if ((e.ctrlKey && e.key.toLowerCase() === 'e') || (!e.ctrlKey && !e.altKey && e.key === 'End')) {
+        e.preventDefault();
+        this.setInputValue(this.input.value, this.input.value.length);
+        return;
+      }
+
+      // Ctrl+B: Backward character
+      if (e.ctrlKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        this.setInputValue(this.input.value, Math.max(0, (this.input.selectionStart || 0) - 1));
+        return;
+      }
+
+      // Ctrl+F: Forward character
+      if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        this.setInputValue(this.input.value, Math.min(this.input.value.length, (this.input.selectionStart || 0) + 1));
+        return;
+      }
+
+      // Alt+B / Alt+ArrowLeft / Ctrl+ArrowLeft: Backward word
+      if ((e.altKey && (e.key.toLowerCase() === 'b' || e.key === 'ArrowLeft')) || (e.ctrlKey && e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        const pos = this.input.selectionStart || 0;
+        this.setInputValue(this.input.value, this.getPrevWordPos(this.input.value, pos));
+        return;
+      }
+
+      // Alt+F / Alt+ArrowRight / Ctrl+ArrowRight: Forward word
+      if ((e.altKey && (e.key.toLowerCase() === 'f' || e.key === 'ArrowRight')) || (e.ctrlKey && e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const pos = this.input.selectionStart || 0;
+        this.setInputValue(this.input.value, this.getNextWordPos(this.input.value, pos));
+        return;
+      }
+
+      // 7. Kill-Ring & Line Editing
+      // Ctrl+U: Cut to beginning of line
+      if (e.ctrlKey && e.key.toLowerCase() === 'u') {
+        e.preventDefault();
         const val = this.input.value;
-        this.input.value = '';
-        this.inputDisplay.textContent = '';
-        await this.handleInputSubmit(val);
-      } else if (e.key === 'ArrowUp') {
+        const pos = this.input.selectionStart || 0;
+        const cut = val.slice(0, pos);
+        this.killRing = this.lastActionWasKill ? cut + this.killRing : cut;
+        this.setInputValue(val.slice(pos), 0);
+        this.lastActionWasKill = true;
+        return;
+      }
+
+      // Ctrl+K: Cut to end of line
+      if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        const cut = val.slice(pos);
+        this.killRing = this.lastActionWasKill ? this.killRing + cut : cut;
+        this.setInputValue(val.slice(0, pos), pos);
+        this.lastActionWasKill = true;
+        return;
+      }
+
+      // Ctrl+W / Alt+Backspace / Ctrl+Backspace: Cut word backward
+      if ((e.ctrlKey && (e.key.toLowerCase() === 'w' || e.key === 'Backspace')) || (e.altKey && e.key === 'Backspace')) {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        const prev = this.getPrevWordPos(val, pos);
+        const cut = val.slice(prev, pos);
+        this.killRing = this.lastActionWasKill ? cut + this.killRing : cut;
+        this.setInputValue(val.slice(0, prev) + val.slice(pos), prev);
+        this.lastActionWasKill = true;
+        return;
+      }
+
+      // Alt+D: Cut word forward
+      if (e.altKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        const next = this.getNextWordPos(val, pos);
+        const cut = val.slice(pos, next);
+        this.killRing = this.lastActionWasKill ? this.killRing + cut : cut;
+        this.setInputValue(val.slice(0, pos) + val.slice(next), pos);
+        this.lastActionWasKill = true;
+        return;
+      }
+
+      this.lastActionWasKill = false;
+
+      // Ctrl+Y: Yank (paste) kill-ring
+      if (e.ctrlKey && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        if (this.killRing) {
+          const val = this.input.value;
+          const pos = this.input.selectionStart || 0;
+          this.setInputValue(val.slice(0, pos) + this.killRing + val.slice(pos), pos + this.killRing.length);
+        }
+        return;
+      }
+
+      // Ctrl+H: Backspace
+      if (e.ctrlKey && e.key.toLowerCase() === 'h') {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        if (pos > 0) {
+          this.setInputValue(val.slice(0, pos - 1) + val.slice(pos), pos - 1);
+        }
+        return;
+      }
+
+      // Ctrl+D: Delete character or display persistent session logout notice
+      if (e.ctrlKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        if (val.length > 0) {
+          if (pos < val.length) {
+            this.setInputValue(val.slice(0, pos) + val.slice(pos + 1), pos);
+          }
+        } else {
+          this.print('logout: not permitted in this session (session is persistent).', 'color-yellow');
+          this.print("Type '<span class=\"blue cmd-link\" data-cmd=\"help\">help</span>' to explore available terminal commands.");
+          this.updatePrompt();
+        }
+        return;
+      }
+
+      // 8. Transformations (Transpose & Case)
+      // Ctrl+T: Transpose characters
+      if (e.ctrlKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        if (val.length >= 2) {
+          if (pos === val.length) {
+            const newVal = val.slice(0, pos - 2) + val[pos - 1] + val[pos - 2];
+            this.setInputValue(newVal, pos);
+          } else if (pos > 0) {
+            const newVal = val.slice(0, pos - 1) + val[pos] + val[pos - 1] + val.slice(pos + 1);
+            this.setInputValue(newVal, pos + 1);
+          }
+        }
+        return;
+      }
+
+      // Alt+T: Transpose words
+      if (e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+
+        let pEnd = pos;
+        while (pEnd > 0 && /\s/.test(val[pEnd - 1])) pEnd--;
+        let pStart = pEnd;
+        while (pStart > 0 && !/\s/.test(val[pStart - 1])) pStart--;
+
+        let nStart = pos;
+        while (nStart < val.length && /\s/.test(val[nStart])) nStart++;
+        let nEnd = nStart;
+        while (nEnd < val.length && !/\s/.test(val[nEnd])) nEnd++;
+
+        if (pStart < pEnd && nStart < nEnd) {
+          const w1 = val.slice(pStart, pEnd);
+          const mid = val.slice(pEnd, nStart);
+          const w2 = val.slice(nStart, nEnd);
+          const newVal = val.slice(0, pStart) + w2 + mid + w1 + val.slice(nEnd);
+          this.setInputValue(newVal, pStart + w2.length + mid.length + w1.length);
+        }
+        return;
+      }
+
+      // Alt+U / Alt+L / Alt+C: Word case manipulation
+      if (e.altKey && (e.key.toLowerCase() === 'u' || e.key.toLowerCase() === 'l' || e.key.toLowerCase() === 'c')) {
+        e.preventDefault();
+        const val = this.input.value;
+        const pos = this.input.selectionStart || 0;
+        const next = this.getNextWordPos(val, pos);
+        const word = val.slice(pos, next);
+        let transformed = word;
+        if (e.key.toLowerCase() === 'u') {
+          transformed = word.toUpperCase();
+        } else if (e.key.toLowerCase() === 'l') {
+          transformed = word.toLowerCase();
+        } else if (e.key.toLowerCase() === 'c') {
+          transformed = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+        }
+        this.setInputValue(val.slice(0, pos) + transformed + val.slice(next), next);
+        return;
+      }
+
+      // 9. History Navigation & Argument Yanking
+      // Alt+. / Alt+_: Yank last argument of previous commands
+      if (e.altKey && (e.key === '.' || e.key === '_')) {
+        e.preventDefault();
+        if (this.commandHistory.length > 0) {
+          this.lastArgCycleIndex++;
+          const targetIdx = this.commandHistory.length - 1 - this.lastArgCycleIndex;
+          if (targetIdx >= 0) {
+            const targetCmd = this.commandHistory[targetIdx];
+            const parsedArgs = parseArgs(targetCmd);
+            const lastArg = parsedArgs.length > 0 ? parsedArgs[parsedArgs.length - 1] : '';
+            const val = this.input.value;
+            const pos = this.input.selectionStart || 0;
+
+            if (this.lastArgCycleIndex > 0) {
+              const start = Math.max(0, pos - this.lastInsertedArgLen);
+              this.setInputValue(val.slice(0, start) + lastArg + val.slice(pos), start + lastArg.length);
+            } else {
+              this.setInputValue(val.slice(0, pos) + lastArg + val.slice(pos), pos + lastArg.length);
+            }
+            this.lastInsertedArgLen = lastArg.length;
+          } else {
+            this.lastArgCycleIndex = -1;
+          }
+        }
+        return;
+      }
+
+      // Alt+<: Oldest command in history
+      if (e.altKey && (e.key === '<' || e.key === ',')) {
+        e.preventDefault();
+        if (this.commandHistory.length > 0) {
+          if (this.historyIndex === this.commandHistory.length) {
+            this.historyDraft = this.input.value;
+          }
+          this.historyIndex = 0;
+          this.setInputValue(this.commandHistory[0]);
+        }
+        return;
+      }
+
+      // Alt+>: Newest command / clear prompt
+      if (e.altKey && (e.key === '>' || (e.shiftKey && e.key === '.'))) {
+        e.preventDefault();
+        this.historyIndex = this.commandHistory.length;
+        this.setInputValue(this.historyDraft || '');
+        return;
+      }
+
+      // Ctrl+P / ArrowUp: Previous command
+      if ((e.ctrlKey && e.key.toLowerCase() === 'p') || (!e.ctrlKey && !e.altKey && e.key === 'ArrowUp')) {
         e.preventDefault();
         if (this.commandHistory.length > 0 && this.historyIndex > 0) {
+          if (this.historyIndex === this.commandHistory.length) {
+            this.historyDraft = this.input.value;
+          }
           this.historyIndex--;
-          this.input.value = this.commandHistory[this.historyIndex];
-          this.updateInputDisplay(this.commandHistory[this.historyIndex]);
+          this.setInputValue(this.commandHistory[this.historyIndex]);
         }
-      } else if (e.key === 'ArrowDown') {
+        return;
+      }
+
+      // Ctrl+N / ArrowDown: Next command
+      if ((e.ctrlKey && e.key.toLowerCase() === 'n') || (!e.ctrlKey && !e.altKey && e.key === 'ArrowDown')) {
         e.preventDefault();
         if (this.historyIndex < this.commandHistory.length - 1) {
           this.historyIndex++;
-          this.input.value = this.commandHistory[this.historyIndex];
-          this.updateInputDisplay(this.commandHistory[this.historyIndex]);
+          this.setInputValue(this.commandHistory[this.historyIndex]);
         } else if (this.historyIndex === this.commandHistory.length - 1) {
           this.historyIndex = this.commandHistory.length;
-          this.input.value = '';
-          this.inputDisplay.textContent = '';
+          this.setInputValue(this.historyDraft || '');
         }
-      } else if (e.key === 'Tab') {
+        return;
+      }
+
+      // 10. Command Submission (Enter, Ctrl+J, Ctrl+M)
+      if ((e.ctrlKey && (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'm')) || (!e.ctrlKey && !e.altKey && e.key === 'Enter')) {
+        e.preventDefault();
+        const val = this.input.value;
+        this.setInputValue('', 0);
+        await this.handleInputSubmit(val);
+        return;
+      }
+
+      // 11. Autocomplete (Tab)
+      if (e.key === 'Tab') {
         e.preventDefault();
         this.handleTabAutocomplete();
+        return;
       }
     });
 
-    // Capture Ctrl+C interrupts (only if no text is selected)
+    // Capture Ctrl+C interrupts across document
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey && e.key.toLowerCase() === 'c') {
         if (window.getSelection().toString() === '') {
           e.preventDefault();
           this.abortSignal = true;
 
-          // If we're inside a readInput() call, abort it cleanly
+          if (this.searchMode) {
+            this.exitSearchMode(true);
+            return;
+          }
+
           if (this.activeInputAbortResolver) {
             const abort = this.activeInputAbortResolver;
             this.activeInputAbortResolver = null;
@@ -336,16 +891,58 @@ export class Shell {
             return;
           }
 
-          // Normal shell Ctrl+C behavior (only when NOT in a readInput sub-prompt)
           if (this.loginState === 'LOGGED_IN' && !this.isBooting && !this.input.disabled) {
             const currentVal = this.input.value;
             this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}^C`);
-            this.input.value = '';
-            this.inputDisplay.textContent = '';
+            this.setInputValue('', 0);
             this.updatePrompt();
             this.focus();
           }
         }
+      }
+    });
+
+    // Authentic X11 mouse selection auto-copy
+    document.addEventListener('mouseup', () => {
+      const selected = window.getSelection().toString();
+      if (selected && selected.trim() !== '') {
+        try {
+          navigator.clipboard.writeText(selected);
+        } catch (_) {}
+      }
+    });
+
+    // Authentic X11 right-click & middle-click paste into prompt
+    document.addEventListener('contextmenu', async (e) => {
+      if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.isExecutingCommand) return;
+      const selected = window.getSelection().toString();
+      if (!selected) {
+        e.preventDefault();
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            const pos = this.input.selectionStart || 0;
+            const val = this.input.value;
+            this.setInputValue(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
+            this.focus();
+          }
+        } catch (_) {}
+      }
+    });
+
+    document.addEventListener('auxclick', async (e) => {
+      if (e.button === 1) { // Middle click
+        if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.isExecutingCommand) return;
+        e.preventDefault();
+        try {
+          const text = await navigator.clipboard.readText();
+          if (text) {
+            const pos = this.input.selectionStart || 0;
+            const val = this.input.value;
+            this.setInputValue(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
+            this.focus();
+          }
+        } catch (_) {}
       }
     });
 
@@ -540,6 +1137,9 @@ export class Shell {
       this.promptPrefix.innerHTML = this.getPromptHtml();
       this.input.value = '';
       this.updateInputDisplay('');
+      if (typeof document !== 'undefined') {
+        document.title = `${this.currentUsername}@${this.hostname}: ${this.formatDisplayPath()}`;
+      }
     } else if (this.loginState === 'BOOTING') {
       this.inputDisplay.textContent = '';
       this.input.value = '';
@@ -550,6 +1150,7 @@ export class Shell {
     if (this.loginState !== 'LOGGED_IN' || this.isExecutingCommand) return;
 
     this.isExecutingCommand = true;
+    this.historyDraft = '';
     const trimmed = val.trim();
     if (trimmed !== '') {
       if (this.commandHistory.length === 0 || this.commandHistory[this.commandHistory.length - 1] !== trimmed) {
@@ -579,6 +1180,44 @@ export class Shell {
   }
 
   async executeCommand(cmdStr) {
+    let trimmed = cmdStr.trim();
+    if (trimmed === '') return;
+
+    // 1. Bash History Expansions (!! and !$)
+    if (this.commandHistory.length > 1) {
+      const prevCmd = this.commandHistory[this.commandHistory.length - 2];
+      const prevArgs = parseArgs(prevCmd);
+      const prevLastArg = prevArgs.length > 0 ? prevArgs[prevArgs.length - 1] : '';
+
+      let expanded = false;
+      if (trimmed.includes('!!')) {
+        trimmed = trimmed.replace(/!!/g, prevCmd);
+        expanded = true;
+      }
+      if (trimmed.includes('!$')) {
+        trimmed = trimmed.replace(/!\$/g, prevLastArg);
+        expanded = true;
+      }
+      if (expanded) {
+        this.commandHistory[this.commandHistory.length - 1] = trimmed;
+        this.print(this.escapeHTML(trimmed), 'color-dim');
+      }
+    }
+
+    // 2. Command Chaining (; and &&)
+    const chains = splitCommandChains(trimmed);
+    if (chains.length > 1) {
+      for (const singleCmd of chains) {
+        if (this.abortSignal) break;
+        await this.executeSingleCommand(singleCmd);
+      }
+      return;
+    }
+
+    await this.executeSingleCommand(trimmed);
+  }
+
+  async executeSingleCommand(cmdStr) {
     const trimmed = cmdStr.trim();
     if (trimmed === '') return;
 
@@ -605,53 +1244,63 @@ export class Shell {
 
     this.abortSignal = false;
 
+    if (typeof document !== 'undefined') {
+      document.title = `${command} - ${this.currentUsername}@${this.hostname}: ${displayPath}`;
+    }
+
     if (command !== 'cd' && !this.isBooting) {
       this.updateBrowserUrl(this.formatDisplayPath(), commandPart);
     }
 
-    if (this.commands[command]) {
-      const cmd = this.commands[command];
+    try {
+      if (this.commands[command]) {
+        const cmd = this.commands[command];
 
-      if (cmd.lazy) {
-        try {
-          const module = await cmd.import();
-          const loadedCmd = module[command];
-          if (loadedCmd) {
-            Object.assign(cmd, loadedCmd);
-            cmd.lazy = false;
+        if (cmd.lazy) {
+          try {
+            const module = await cmd.import();
+            const loadedCmd = module[command];
+            if (loadedCmd) {
+              Object.assign(cmd, loadedCmd);
+              cmd.lazy = false;
+            }
+          } catch (err) {
+            this.print(`Failed to load command '${command}': ${err.message}`, 'color-error');
+            return;
           }
-        } catch (err) {
-          this.print(`Failed to load command '${command}': ${err.message}`, 'color-error');
+        }
+
+        // Intercept -h or --help to display detailed command help
+        if (args.length === 1 && (args[0] === '-h' || args[0] === '--help')) {
+          await this.commands.help.run([command], this);
           return;
         }
-      }
 
-      // Intercept -h or --help to display detailed command help
-      if (args.length === 1 && (args[0] === '-h' || args[0] === '--help')) {
-        await this.commands.help.run([command], this);
+        // Automatically validate required arguments
+        if (cmd.args && cmd.args.length > 0) {
+          const requiredArgs = cmd.args.filter(a => a.required);
+          if (args.length < requiredArgs.length) {
+            const missingArg = requiredArgs[args.length];
+            let usage = cmd.name;
+            const argUsageStrings = cmd.args.map(a => a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`);
+            if (argUsageStrings.length > 0) {
+              usage += ' ' + argUsageStrings.join(' ');
+            }
+            this.print(`${command}: missing required argument &lt;${escapeHTML(missingArg.name)}&gt;. Usage: <span class="color-green">${usage}</span>`, 'color-error');
+            return;
+          }
+        }
+
+        await cmd.run(args, this);
         return;
       }
 
-      // Automatically validate required arguments
-      if (cmd.args && cmd.args.length > 0) {
-        const requiredArgs = cmd.args.filter(a => a.required);
-        if (args.length < requiredArgs.length) {
-          const missingArg = requiredArgs[args.length];
-          let usage = cmd.name;
-          const argUsageStrings = cmd.args.map(a => a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`);
-          if (argUsageStrings.length > 0) {
-            usage += ' ' + argUsageStrings.join(' ');
-          }
-          this.print(`${command}: missing required argument &lt;${escapeHTML(missingArg.name)}&gt;. Usage: <span class="color-green">${usage}</span>`, 'color-error');
-          return;
-        }
+      this.print(`command not found: ${command}. Type 'help' to see list of commands.`, 'color-error');
+    } finally {
+      if (typeof document !== 'undefined') {
+        document.title = `${this.currentUsername}@${this.hostname}: ${this.formatDisplayPath()}`;
       }
-
-      await cmd.run(args, this);
-      return;
     }
-
-    this.print(`command not found: ${command}. Type 'help' to see list of commands.`, 'color-error');
   }
 
   handleTabAutocomplete() {
@@ -680,13 +1329,11 @@ export class Shell {
       const matches = availableCmds.filter(cmd => cmd.startsWith(typedCmd));
 
       if (matches.length === 1) {
-        this.input.value = matches[0] + ' ';
-        this.updateInputDisplay(this.input.value);
+        this.setInputValue(matches[0] + ' ');
       } else if (matches.length > 1) {
         const lcp = getLongestCommonPrefix(matches);
         if (lcp.length > typedCmd.length) {
-          this.input.value = lcp;
-          this.updateInputDisplay(this.input.value);
+          this.setInputValue(lcp);
         } else {
           this.print(matches.join('    '), 'color-accent');
         }
@@ -704,14 +1351,12 @@ export class Shell {
 
         if (matches.length === 1) {
           parts[parts.length - 1] = matches[0] + ' ';
-          this.input.value = parts.join(' ');
-          this.updateInputDisplay(this.input.value);
+          this.setInputValue(parts.join(' '));
         } else if (matches.length > 1) {
           const lcp = getLongestCommonPrefix(matches);
           if (lcp.length > typedArg.length) {
             parts[parts.length - 1] = lcp;
-            this.input.value = parts.join(' ');
-            this.updateInputDisplay(this.input.value);
+            this.setInputValue(parts.join(' '));
           } else {
             this.print(matches.join('    '), 'color-accent');
           }
@@ -761,15 +1406,13 @@ export class Shell {
         const completedArg = (slashIdx !== -1 ? argVal.slice(0, slashIdx + 1) : '') + matchedName + (isDirNode ? '/' : ' ');
 
         parts[parts.length - 1] = completedArg;
-        this.input.value = parts.join(' ');
-        this.updateInputDisplay(this.input.value);
+        this.setInputValue(parts.join(' '));
       } else if (matches.length > 1) {
         const lcp = getLongestCommonPrefix(matches);
         if (lcp.length > prefix.length) {
           const completedPrefix = (slashIdx !== -1 ? argVal.slice(0, slashIdx + 1) : '') + lcp;
           parts[parts.length - 1] = completedPrefix;
-          this.input.value = parts.join(' ');
-          this.updateInputDisplay(this.input.value);
+          this.setInputValue(parts.join(' '));
         } else {
           const formattedMatches = matches.map(matchedName => {
             const itemNode = targetDir[matchedName];
