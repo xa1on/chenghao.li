@@ -14,7 +14,7 @@ export const cd = {
       shell.previousPath = [...shell.currentPath];
       shell.currentPath = [...home];
       if (!shell.isBooting) shell.updateBrowserUrl('~');
-      return;
+      return 0;
     }
 
     const pathArg = args[0];
@@ -23,7 +23,7 @@ export const cd = {
     if (pathArg === '-') {
       if (!shell.previousPath) {
         shell.print('cd: OLDPWD not set', 'color-error');
-        return;
+        return 1;
       }
       const target = shell.previousPath;
       shell.previousPath = [...shell.currentPath];
@@ -31,22 +31,24 @@ export const cd = {
       const display = shell.formatDisplayPath(target);
       shell.print(display);
       if (!shell.isBooting) shell.updateBrowserUrl(display);
-      return;
+      return 0;
     }
 
     const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg);
     if (resolved === null) {
       shell.print(`cd: no such file or directory: ${pathArg}`, 'color-error');
-      return;
+      return 1;
     }
 
     const targetNode = shell.fileSystem.getNodeByPath(resolved);
     if (!targetNode || typeof targetNode !== 'object' || targetNode.symlink !== undefined) {
       shell.print(`cd: not a directory: ${pathArg}`, 'color-error');
-    } else {
-      shell.previousPath = [...shell.currentPath];
-      shell.currentPath = resolved;
-      if (!shell.isBooting) shell.updateBrowserUrl(shell.formatDisplayPath(resolved));
+      return 1;
     }
+
+    shell.previousPath = [...shell.currentPath];
+    shell.currentPath = resolved;
+    if (!shell.isBooting) shell.updateBrowserUrl(shell.formatDisplayPath(resolved));
+    return 0;
   }
 };

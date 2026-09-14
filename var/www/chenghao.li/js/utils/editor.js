@@ -15,7 +15,11 @@ export class BaseEditor {
     this.scrollTopLine = 0;
 
     this.originalState = this.shell.loginState;
-    this.shell.loginState = 'GAME'; // Bypass shell typing listener
+    this.shell.loginState = 'GAME'; // Retained for backwards compatibility
+    this.editorKeyHandler = (e) => this.handleKeydown(e);
+    if (this.shell.pushInputHandler) {
+      this.shell.pushInputHandler(this.editorKeyHandler);
+    }
 
     this.resizeObserver = null;
   }
@@ -99,6 +103,9 @@ export class BaseEditor {
     this.shell.inputLine.classList.remove('hidden-input-line');
     this.shell.body.style.overflowY = '';
     this.shell.loginState = this.originalState;
+    if (this.shell.popInputHandler) {
+      this.shell.popInputHandler();
+    }
     this.shell.updatePrompt();
     this.shell.focus();
   }

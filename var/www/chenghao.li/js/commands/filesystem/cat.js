@@ -1,23 +1,37 @@
 export const cat = {
   name: 'cat',
-  description: 'Display the contents of a text file, or render colored ASCII art.',
+  description: 'Display the contents of one or more text files, or render colored ASCII art.',
   category: 'filesystem',
   args: [
     { name: 'filename', description: 'The text file to display, or .art file to render.', required: true }
   ],
   run: async (args, shell) => {
-    const fileArg = args[0];
-    const resolved = shell.fileSystem.resolvePath(shell.currentPath, fileArg);
-    if (resolved === null) {
-      shell.print(`cat: ${fileArg}: No such file or directory`, 'color-error');
-      return;
+    if (args.length === 0) {
+      shell.print('cat: missing file operand', 'color-error');
+      return 1;
     }
-    const targetNode = shell.fileSystem.getNodeByPath(resolved);
-    if (targetNode === null) {
-      shell.print(`cat: ${fileArg}: No such file or directory`, 'color-error');
-    } else if (typeof targetNode === 'object') {
-      shell.print(`cat: ${fileArg}: Is a directory`, 'color-error');
-    } else {
+
+    let overallStatus = 0;
+
+    for (const fileArg of args) {
+      const resolved = shell.fileSystem.resolvePath(shell.currentPath, fileArg);
+      if (resolved === null) {
+        shell.print(`cat: ${fileArg}: No such file or directory`, 'color-error');
+        overallStatus = 1;
+        continue;
+      }
+      const targetNode = shell.fileSystem.getNodeByPath(resolved);
+      if (targetNode === null) {
+        shell.print(`cat: ${fileArg}: No such file or directory`, 'color-error');
+        overallStatus = 1;
+        continue;
+      }
+      if (typeof targetNode === 'object') {
+        shell.print(`cat: ${fileArg}: Is a directory`, 'color-error');
+        overallStatus = 1;
+        continue;
+      }
+
       const fileName = resolved[resolved.length - 1];
       const lowerName = fileName.toLowerCase();
       const isImage = lowerName.endsWith('.png') ||
@@ -32,7 +46,7 @@ export const cat = {
         const hash = shell.fileSystem.isBuiltInPath(resolved) ? shell.fileSystem.getNodeByPath(resolved) : '';
         const filePath = '/' + resolved.join('/') + (typeof hash === 'string' && hash && hash !== 'core' ? '?v=' + hash : '');
         shell.print(`<img src="${filePath}" class="terminal-image" alt="${shell.escapeHTML(fileName)}">`);
-        return;
+        continue;
       }
 
       // Render colored ASCII art files directly to the terminal
@@ -41,8 +55,6 @@ export const cat = {
           const content = await shell.fileSystem.readFile(resolved);
           const data = JSON.parse(content);
           if (data && typeof data.width === 'number' && typeof data.height === 'number' && Array.isArray(data.cells)) {
-            // Absolute Peak Optimization: Render the entire grid inside a single <pre> element, using span merging
-            // and native text newline boundaries. This completely bypasses all flexbox layout and div wrappers.
             let html = '<pre style="font-family: \'Fira Code\', monospace; line-height: 1.2; letter-spacing: 0; font-size: 14px; margin: 10px 0; white-space: pre; overflow-x: auto; border: none; background: transparent; padding: 0;">';
             let idx = 0;
             for (let y = 0; y < data.height; y++) {
@@ -79,7 +91,7 @@ export const cat = {
             }
             html += '</pre>';
             shell.print(html);
-            return;
+            continue;
           }
         } catch (e) {
           // Fallback to plain text if parsing fails
@@ -92,7 +104,10 @@ export const cat = {
         shell.print(output);
       } catch (err) {
         shell.print(`cat: error reading ${fileArg}: ${err.message}`, 'color-error');
+        overallStatus = 1;
       }
     }
+
+    return overallStatus;
   }
 };
