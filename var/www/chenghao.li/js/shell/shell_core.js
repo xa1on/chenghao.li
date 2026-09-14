@@ -821,6 +821,40 @@ export class Shell {
     }
   }
 
+  skippableDelay(ms) {
+    if (ms <= 0) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      let timeoutId = null;
+      let done = false;
+
+      const finish = (skipped) => {
+        if (done) return;
+        done = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        cleanup();
+        resolve(skipped);
+      };
+
+      const handleSkip = () => {
+        finish(true);
+      };
+
+      const cleanup = () => {
+        window.removeEventListener('keydown', handleSkip, true);
+        window.removeEventListener('click', handleSkip, true);
+        window.removeEventListener('touchstart', handleSkip, true);
+      };
+
+      window.addEventListener('keydown', handleSkip, true);
+      window.addEventListener('click', handleSkip, true);
+      window.addEventListener('touchstart', handleSkip, true);
+
+      timeoutId = setTimeout(() => {
+        finish(false);
+      }, ms);
+    });
+  }
+
   typeCommand(text, speed = this.typewriterDelay) {
     const fullCleanText = text.replace(/<(?:d|delay):(\d+)>/gi, '');
 
@@ -847,6 +881,7 @@ export class Shell {
       const finishImmediately = () => {
         if (skipped) return;
         skipped = true;
+        this.lastTypeCommandSkipped = true;
         if (timeoutId) clearTimeout(timeoutId);
         cleanup();
         this.updateInputDisplay(fullCleanText);
@@ -876,6 +911,7 @@ export class Shell {
         if (skipped) return;
 
         if (tokenIdx >= tokens.length) {
+          this.lastTypeCommandSkipped = false;
           cleanup();
           resolve(displayedText);
           return;
@@ -928,8 +964,8 @@ export class Shell {
 
   async typeAndSubmit(text, speed = this.typewriterDelay, enter_delay = this.typewriterDelay) {
     const cleanCmd = await this.typeCommand(text, speed);
-    if (enter_delay > 0) {
-      await new Promise(resolve => setTimeout(resolve, enter_delay));
+    if (!this.lastTypeCommandSkipped && enter_delay > 0) {
+      await this.skippableDelay(enter_delay);
     }
     await this.handleInputSubmit(cleanCmd);
     return cleanCmd;
@@ -1081,12 +1117,12 @@ export class Shell {
     const cmdText = `ssh ${this.currentUsername}<d:100>@${this.hostname}`;
     await this.typeCommand(cmdText);
 
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await this.skippableDelay(200);
     this.print(`<span class="color-accent">${this.localPrompt}</span> ${sshCmd}`);
     this.promptPrefix.innerHTML = '';
     this.updateInputDisplay('');
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await this.skippableDelay(1000);
 
     if (this.onConnect) {
       await this.onConnect(this);
@@ -1096,7 +1132,7 @@ export class Shell {
     this.loginState = 'LOGGED_IN';
     audio.fadeHumQuiet();
 
-    await new Promise(resolve => setTimeout(resolve, 600));
+    await this.skippableDelay(600);
 
     // Preset initial ls
     await this.typeAndSubmit('ls<d:200> # click items to navigate<d:75>, or use cat/cd', null, 400);
@@ -1107,12 +1143,12 @@ export class Shell {
         const targetObj = this.fileSystem.getNodeByPath(resolved);
         const isDir = typeof targetObj === 'object';
 
-        await new Promise(resolve => setTimeout(resolve, 400));
+        await this.skippableDelay(400);
 
         if (isDir) {
           await this.typeAndSubmit(`cd ${initialPath}`);
           if (!initialCommand) {
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await this.skippableDelay(300);
             await this.typeAndSubmit('ls');
           }
         } else {
@@ -1121,7 +1157,7 @@ export class Shell {
             const parentDir = initialPath.slice(0, slashIdx);
             const fileName = initialPath.slice(slashIdx + 1);
             await this.typeAndSubmit(`cd ${parentDir}`);
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await this.skippableDelay(300);
             await this.typeAndSubmit(`cat ${fileName}`);
           } else {
             await this.typeAndSubmit(`cat ${initialPath}`);
@@ -1133,7 +1169,7 @@ export class Shell {
     }
 
     if (initialCommand) {
-      await new Promise(resolve => setTimeout(resolve, 400));
+      await this.skippableDelay(400);
       await this.typeAndSubmit(initialCommand);
     }
 
