@@ -821,7 +821,9 @@ export class Shell {
     }
   }
 
-  async typeCommand(text, speed = this.typewriterDelay) {
+  typeCommand(text, speed = this.typewriterDelay) {
+    const fullCleanText = text.replace(/<(?:d|delay):(\d+)>/gi, '');
+
     const tokens = [];
     const regex = /<(?:d|delay):(\d+)>/gi;
     let lastIndex = 0;
@@ -838,45 +840,97 @@ export class Shell {
       tokens.push({ type: 'text', value: text.slice(lastIndex) });
     }
 
-    let displayedText = '';
-    let globalCharIndex = 0;
+    return new Promise((resolve) => {
+      let skipped = false;
+      let timeoutId = null;
 
-    for (const token of tokens) {
-      if (token.type === 'delay') {
-        if (token.ms > 0) {
-          await new Promise(resolve => setTimeout(resolve, token.ms));
+      const finishImmediately = () => {
+        if (skipped) return;
+        skipped = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        cleanup();
+        this.updateInputDisplay(fullCleanText);
+        resolve(fullCleanText);
+      };
+
+      const handleSkip = () => {
+        finishImmediately();
+      };
+
+      const cleanup = () => {
+        window.removeEventListener('keydown', handleSkip, true);
+        window.removeEventListener('click', handleSkip, true);
+        window.removeEventListener('touchstart', handleSkip, true);
+      };
+
+      window.addEventListener('keydown', handleSkip, true);
+      window.addEventListener('click', handleSkip, true);
+      window.addEventListener('touchstart', handleSkip, true);
+
+      let tokenIdx = 0;
+      let charIdx = 0;
+      let globalCharIndex = 0;
+      let displayedText = '';
+
+      const step = () => {
+        if (skipped) return;
+
+        if (tokenIdx >= tokens.length) {
+          cleanup();
+          resolve(displayedText);
+          return;
         }
-      } else if (token.type === 'text') {
-        for (let i = 0; i < token.value.length; i++) {
-          const char = token.value[i];
-          displayedText += char;
-          this.updateInputDisplay(displayedText);
-          audio.playKeyclick(char);
 
-          let delay = 50;
-          if (typeof speed === 'number') {
-            delay = speed;
-          } else if (typeof speed === 'function') {
-            delay = speed(char, globalCharIndex, text);
-          } else if (speed && typeof speed === 'object') {
-            const min = typeof speed.min === 'number' ? speed.min : 30;
-            const max = typeof speed.max === 'number' ? speed.max : 80;
-            delay = Math.floor(Math.random() * (max - min + 1)) + min;
+        const token = tokens[tokenIdx];
+        if (token.type === 'delay') {
+          tokenIdx++;
+          charIdx = 0;
+          if (token.ms > 0) {
+            timeoutId = setTimeout(step, token.ms);
+          } else {
+            step();
           }
+        } else if (token.type === 'text') {
+          if (charIdx < token.value.length) {
+            const char = token.value[charIdx++];
+            displayedText += char;
+            this.updateInputDisplay(displayedText);
+            audio.playKeyclick(char);
 
-          if (delay > 0) {
-            await new Promise(resolve => setTimeout(resolve, delay));
+            let delay = 50;
+            if (typeof speed === 'number') {
+              delay = speed;
+            } else if (typeof speed === 'function') {
+              delay = speed(char, globalCharIndex, text);
+            } else if (speed && typeof speed === 'object') {
+              const min = typeof speed.min === 'number' ? speed.min : 30;
+              const max = typeof speed.max === 'number' ? speed.max : 80;
+              delay = Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+            globalCharIndex++;
+
+            if (delay > 0) {
+              timeoutId = setTimeout(step, delay);
+            } else {
+              step();
+            }
+          } else {
+            tokenIdx++;
+            charIdx = 0;
+            step();
           }
-          globalCharIndex++;
         }
-      }
-    }
-    return displayedText;
+      };
+
+      step();
+    });
   }
 
   async typeAndSubmit(text, speed = this.typewriterDelay, enter_delay = this.typewriterDelay) {
     const cleanCmd = await this.typeCommand(text, speed);
-    await new Promise(resolve => setTimeout(resolve, enter_delay));
+    if (enter_delay > 0) {
+      await new Promise(resolve => setTimeout(resolve, enter_delay));
+    }
     await this.handleInputSubmit(cleanCmd);
     return cleanCmd;
   }
