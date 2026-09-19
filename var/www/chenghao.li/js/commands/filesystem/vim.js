@@ -3,12 +3,24 @@ import { audio } from '../../audio.js';
 
 export const vim = {
   name: 'vim',
-  description: 'Edit a text file using the vim terminal editor.',
+  description: "Vi IMproved, a programmer's text editor.",
   category: 'filesystem',
   lazy: true,
   args: [
     { name: 'filename', description: 'File to edit or create.', required: true }
   ],
+  man: {
+    shortDesc: "Vi IMproved, a programmer's text editor",
+    description: "Vim is a text editor that is upwards compatible to Vi. It can be used to edit all kinds of plain text. It is especially useful for editing programs.",
+    synopsis: 'vim <filename>',
+    options: [
+      { flags: '<filename>', desc: 'File to open or create in the Vim editor.' }
+    ],
+    examples: [
+      { cmd: 'vim notes.txt', desc: 'Open or create notes.txt in Vim editor.' }
+    ],
+    seeAlso: 'nano(1), paint(1)'
+  },
   run: async (args, shell) => {
     return runEditor(VimEditor, args, 'vim', shell);
   }

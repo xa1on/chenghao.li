@@ -20,7 +20,11 @@ export const ls = {
           continue;
         }
         if (arg === '--help') {
-          await shell.commands.help.run(['ls'], shell);
+          if (typeof shell.printCommandHelp === 'function') {
+            shell.printCommandHelp(ls);
+          } else {
+            shell.print("Usage: ls [-a] [-l] [-h] [path]\nFor full manual page, try 'man ls'.");
+          }
           return 0;
         }
         for (let i = 1; i < arg.length; i++) {

@@ -25,9 +25,25 @@ export class BaseEditor {
   }
 
   initDOM(editorClassName) {
+    // Save and reset terminal body scroll position to align full-screen editor to viewport
+    this.savedScrollTop = this.shell.body ? this.shell.body.scrollTop : 0;
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    if (this.shell.body) {
+      this.shell.body.scrollTop = 0;
+      this.shell.body.scrollLeft = 0;
+    }
+
     // Hide terminal output & input line
     this.shell.output.style.display = 'none';
     this.shell.inputLine.classList.add('hidden-input-line');
+
+    // Hide glow backdrops to prevent phantom scroll height or bleed-through
+    if (this.shell.glowBackdrops) {
+      this.shell.glowBackdrops.forEach(el => {
+        if (el) el.style.display = 'none';
+      });
+    }
 
     // Prevent terminal body from scrolling
     this.shell.body.style.overflowY = 'hidden';
@@ -101,7 +117,15 @@ export class BaseEditor {
 
     this.shell.output.style.display = 'flex';
     this.shell.inputLine.classList.remove('hidden-input-line');
+    if (this.shell.glowBackdrops) {
+      this.shell.glowBackdrops.forEach(el => {
+        if (el) el.style.display = '';
+      });
+    }
     this.shell.body.style.overflowY = '';
+    if (this.shell.body && typeof this.savedScrollTop === 'number') {
+      this.shell.body.scrollTop = this.savedScrollTop;
+    }
     this.shell.loginState = this.originalState;
     if (this.shell.popInputHandler) {
       this.shell.popInputHandler();

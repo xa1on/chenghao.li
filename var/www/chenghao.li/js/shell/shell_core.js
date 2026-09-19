@@ -654,7 +654,7 @@ export class Shell {
 
         // Intercept -h or --help
         if (args.length === 1 && (args[0] === '-h' || args[0] === '--help')) {
-          await this.commands.help.run([command], this);
+          this.printCommandHelp(cmd);
           return 0;
         }
 
@@ -677,7 +677,8 @@ export class Shell {
         return typeof runResult === 'number' ? runResult : 0;
       }
 
-      this.print(`command not found: ${command}. Type 'help' to see list of commands.`, 'color-error');
+      this.print(`-bash: ${command}: command not found`, 'color-error');
+      this.print(`<span class="color-dim">Try 'help' or 'man' to explore available commands.</span>`);
       return 127;
     } catch (err) {
       this.print(`Error: ${err.message}`, 'color-error');
@@ -687,6 +688,36 @@ export class Shell {
         document.title = `${this.currentUsername}@${this.hostname}: ${this.formatDisplayPath()}`;
       }
     }
+  }
+
+  printCommandHelp(cmd) {
+    let usage = cmd.name;
+    if (cmd.args && cmd.args.length > 0) {
+      const argUsageStrings = cmd.args.map(a => a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`);
+      usage += ' ' + argUsageStrings.join(' ');
+    }
+    let helpText = `<span class="blue" style="font-weight: bold;">Usage:</span> <span class="color-green">${usage}</span>\n`;
+    if (cmd.description) {
+      helpText += `<span class="blue" style="font-weight: bold;">Description:</span> ${escapeHTML(cmd.description)}\n`;
+    }
+    if (cmd.args && cmd.args.length > 0) {
+      helpText += `\n<span class="blue" style="font-weight: bold;">Arguments:</span>`;
+      for (const arg of cmd.args) {
+        const rawArgName = arg.required ? `<${arg.name}>` : `[${arg.name}]`;
+        const escapedArgName = arg.required ? `&lt;${escapeHTML(arg.name)}&gt;` : `[${escapeHTML(arg.name)}]`;
+        const paddedArgName = rawArgName.padEnd(16);
+        const styledArgName = paddedArgName.replace(rawArgName, `<span class="color-accent">${escapedArgName}</span>`);
+
+        const reqText = arg.required ? '(Required)' : '(Optional)';
+        const reqSpan = arg.required ? `<span class="red">${reqText}</span>` : `<span class="color-dim">${reqText}</span>`;
+        const paddedReqText = reqText.padEnd(12);
+        const styledReqText = paddedReqText.replace(reqText, reqSpan);
+
+        helpText += `\n  ${styledArgName} ${styledReqText} ${escapeHTML(arg.description)}`;
+      }
+    }
+    helpText += `\n\n<span class="color-dim">For full manual page, try '</span><span class="blue cmd-link" data-cmd="man ${cmd.name}">man ${cmd.name}</span><span class="color-dim">'.</span>`;
+    this.print(helpText);
   }
 
   handleTabAutocomplete() {
