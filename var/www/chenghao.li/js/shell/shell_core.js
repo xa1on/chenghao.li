@@ -678,7 +678,7 @@ export class Shell {
       }
 
       this.print(`-bash: ${command}: command not found`, 'color-error');
-      this.print(`<span class="color-dim">Try 'help' or 'man' to explore available commands.</span>`);
+      this.print(`<span class="color-dim">Try '</span><span class="blue cmd-link" data-cmd="help">help</span><span class="color-dim">' or '</span><span class="blue cmd-link" data-cmd="man -k .">man -k .</span><span class="color-dim">' to explore available commands.</span>`);
       return 127;
     } catch (err) {
       this.print(`Error: ${err.message}`, 'color-error');
