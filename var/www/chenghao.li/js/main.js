@@ -24,21 +24,21 @@ const shell = new Shell({
     ▒▒▒<span class="color-dim red">  ▒</span>          <span class="color-dim red">▄▄</span>               </span>█  █</span><span class="red">               ▒                     
    ▒ ▒<span class="color-dim red"> ▒▒▒▒</span>        ▒▒               </span>█    █</span><span class="red">        ▄                           
    ▓▓▓  ▓          ▄            </span>   █ ▓▓▓  █</span><span class="color-dim red">█▓             ▓  ▓                
-  ▓ ▓ ▓  ▓  ▓▓  ▓▓    <span class="color-dim red">▒</span>   ▓</span>█<span class="red">█ ▓</span> ▓▞▀▀▀▀▀▀▀▀▀█▀▀▀▀▀▀▀▀▛▀</span><span class="red">                       
+  ▓ ▓ ▓  ▓  ▓▓  ▓▓    <span class="color-dim red">▒</span>   ▓</span>█<span class="red">█ ▓</span> ▓▞▀▀▀▀▀▀▀▀▀█▀▀▀▀▀▀▀▀▛▀</span><span class="red">                        
   ▓ ▓            ▓       ██ ▓ ▓</span>██     ▓█ ▓▓ █ ▓     ▓</span><span class="red">                         
   ▓▓▓            ▓  <span class="color-dim red">▒</span>   █ ▓  </span>█<span class="red">█</span>██   ▄▞██▓█   ████▓ █</span><span class="red">                          
    ▓▓   ░          <span class="color-dim red">▒ ▒</span> </span>█<span class="red">▓ ▓▓▓</span>  ▓   ▟     ▚     ██████</span><span class="red">        <span class="color-dim red">▒</span>          </span> | <span class="blue">arch</span>4ic</span><span class="red">
   ▓▓▓   ░      ▓▒    <span class="color-dim red">▒</span></span>█▓<span class="red">  █▓</span> ▓█  ▓▄█      ██▓  ██ ████</span><span class="red">▒                       
   ▓▓▓   ░       ▓░    ██ ▓</span> █ █ █▀  ▓█▓ ▄<span class="red">▓</span>██ ███▓█ █  <span class="red">▓</span> █</span><span class="red">                      
   ▓ ▓           ▓░      </span>█ ▓ <span class="red">█</span>█ <span class="red">▄</span>    ▄   ▚   █  <span class="red">▓</span> █    <span class="red">▓</span>█</span><span class="red">                      
-  ▓ ▓▓▓▓▓      ▓▒    ▞▀ </span>█<span class="red">█▓</span>█ ▄▄▄▄▄▓▓▄▄▓▄▄▓▓▓▓▄▄▄▄<span class="red">▓</span>███<span class="red">▓                       
+  ▓ ▓▓▓▓▓      ▓▒    ▞▀ </span>█<span class="red">█▓</span>█ ▄▄▄▄▄▓▓▄▄▓▄▄▓▓▓▓▄▄▄▄<span class="red">▓</span>███<span class="red">▓                        
     ▓▓  ▓       ▓░ <span class="color-dim red">░</span>      </span>█   <span class="red">▓</span>█    ▀▀▀▀▀▀    ██   █<span class="red">   ▓  <span class="color-dim red">▄</span>          ▓  ▓     
    ▒ ▒ ▒▒▒▒▒   ░  <span class="color-dim red">▒▒▒</span>    </span>█    █                █ <span class="red">▓</span>  █<span class="red">     ▒        ▒▒▒  ▒     
     ▒▒▒  ▒ ▒      <span class="color-dim red">▒▒▒▒</span>  </span>█    █               <span class="red">   █▓  ▄</span>█<span class="red">  ▒▒          ▒  ▒      
-    ▒ ▒▒    ▒          </span>█▄▄▄▄▞               <span class="red">░</span>    ▚▄▄▄█<span class="red">               ▒▒      
+    ▒ ▒▒    ▒          </span>█▄▄▄▄▞               <span class="red">░</span>    ▚▄▄▄█<span class="red">               ▒▒       
      ░ ░ ░   ░   ░    <span class="color-dim red">▄</span >                                         ░     ░       
       ░ ░     ░         ░                                      ░     ░ ░      </span><span class="color-dim red">
-       ░ ░░    ░            ░░░                ░░░           ░░    ░░ ░       </span>
+       ░ ░░    ░            ░░░                ░░░           ░░    ░░         </span>
 
 `;
 
