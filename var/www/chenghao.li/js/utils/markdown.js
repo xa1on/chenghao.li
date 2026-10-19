@@ -1,4 +1,5 @@
 import { resolvePath, getNodeByPath } from '../fs.js';
+import { MARKDOWN_WRAP_LIMIT } from '../config.js';
 
 export function escapeHTML(str) {
   return str
@@ -22,7 +23,7 @@ export function sanitizeHTML(str) {
   return escaped;
 }
 
-const getVisibleLength = (htmlStr) => {
+export const getVisibleLength = (htmlStr) => {
   const plainText = htmlStr.replace(/<[^>]*>/g, '');
   const unescaped = plainText
     .replace(/&amp;/g, '&')
@@ -33,7 +34,7 @@ const getVisibleLength = (htmlStr) => {
   return unescaped.length;
 };
 
-const parseInline = (line, vfs = {}, basePathArr = []) => {
+export const parseInline = (line, vfs = {}, basePathArr = []) => {
   const sanitized = sanitizeHTML(line);
 
   // 1. Extract inline code spans first so inner characters (like * or _) are not parsed as markdown
@@ -186,10 +187,11 @@ function renderTextTable(tableLines, vfs = {}, basePathArr = []) {
   return `<pre class="markdown-table-text">${outputRows.join('\n')}</pre>`;
 }
 
-export function parseMarkdown(text, vfs = {}, basePathArr = []) {
+
+export function parseMarkdown(text, vfs = {}, basePathArr = [], wrapLimit = MARKDOWN_WRAP_LIMIT) {
   if (typeof text !== 'string') return '';
 
-  const lines = text.split('\n');
+  const lines = text.replace(/\r/g, '').split('\n');
   const blocks = [];
   let currentBlock = null;
 
@@ -271,9 +273,10 @@ export function parseMarkdown(text, vfs = {}, basePathArr = []) {
       continue;
     }
 
-    // 6. List items (group consecutive list items)
+    // 6. List items (group consecutive list items and indented continuation lines)
     const isListItem = /^\s*([*\-+]|\d+\.)\s+/.test(line);
-    if (isListItem) {
+    const isListContinuation = currentBlock && currentBlock.type === 'list' && /^(\s{2,}|\t)\S/.test(line);
+    if (isListItem || isListContinuation) {
       if (currentBlock && currentBlock.type !== 'list') {
         blocks.push(currentBlock);
         currentBlock = null;
@@ -330,7 +333,21 @@ export function parseMarkdown(text, vfs = {}, basePathArr = []) {
         return renderTextTable(block.lines, vfs, basePathArr);
       }
       case 'list': {
-        return block.lines.map(line => `<div>${parseInline(line, vfs, basePathArr)}</div>`).join('');
+        return block.lines.map(line => {
+          const listMatch = line.match(/^(\s*)([*\-+]|\d+\.)(\s+)(.*)$/);
+          if (listMatch) {
+            const indentLen = listMatch[1].replace(/\t/g, '  ').length;
+            const marker = listMatch[2] + listMatch[3];
+            const pad = indentLen + marker.length;
+            return `<div style="padding-left: ${pad}ch; text-indent: -${marker.length}ch;">${marker}${parseInline(listMatch[4], vfs, basePathArr)}</div>`;
+          }
+          const leadMatch = line.match(/^(\s+)(.*)$/);
+          if (leadMatch) {
+            const pad = leadMatch[1].replace(/\t/g, '  ').length;
+            return `<div style="padding-left: ${pad}ch;">${parseInline(leadMatch[2], vfs, basePathArr)}</div>`;
+          }
+          return `<div>${parseInline(line, vfs, basePathArr)}</div>`;
+        }).join('');
       }
       case 'paragraph': {
         let paragraphText = '';
@@ -355,5 +372,6 @@ export function parseMarkdown(text, vfs = {}, basePathArr = []) {
     }
   });
 
-  return renderedBlocks.join('');
+  const maxWidthStyle = typeof wrapLimit === 'number' && wrapLimit > 0 ? `max-width: ${wrapLimit}ch; ` : '';
+  return `<div class="markdown-body" style="${maxWidthStyle}word-break: normal; overflow-wrap: break-word;">${renderedBlocks.join('')}</div>`;
 }

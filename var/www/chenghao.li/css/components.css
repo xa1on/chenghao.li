@@ -1,6 +1,11 @@
 /* ==========================================
    Markdown Tables & Code Blocks (Pure Text Style)
    ========================================== */
+.markdown-body {
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
 .markdown-table-text {
   font-family: inherit;
   font-size: 1rem;

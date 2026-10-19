@@ -7,7 +7,8 @@ import {
   LOCAL_BOOT_PROMPT,
   PROMPT_SYMBOL,
   MAX_TERMINAL_OUTPUT_LINES,
-  TYPEWRITER_DEFAULT_DELAY
+  TYPEWRITER_DEFAULT_DELAY,
+  MARKDOWN_WRAP_LIMIT
 } from '../config.js';
 import {
   findCommentIndex,
@@ -474,8 +475,8 @@ export class Shell {
     });
   }
 
-  parseMarkdown(text, basePathArr = []) {
-    return parseMarkdown(text, this.fileSystem ? this.fileSystem.root : {}, basePathArr);
+  parseMarkdown(text, basePathArr = [], wrapLimit = MARKDOWN_WRAP_LIMIT) {
+    return parseMarkdown(text, this.fileSystem ? this.fileSystem.root : {}, basePathArr, wrapLimit);
   }
 
   escapeHTML(text) {
