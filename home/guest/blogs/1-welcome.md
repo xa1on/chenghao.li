@@ -43,7 +43,7 @@ Try opening stuff up with [vim](cmd:vim test.txt) or [nano](cmd:nano test.txt) a
 
 I think the fact that you can write bash scripts are cool too. Try making one yourself! It's not 1:1 parity with Linux bash, but it has all of the basics. (Take a [look at test.sh!](cmd:~/test.sh) or inspect it with [cat ~/test.sh](cmd:cat ~/test.sh))
 
-Also, you might have noticed that there's a markdown renderer (which is parsing this exact post! see source here: [~/blogs/1-welcome.md](cmd:vim ~/blogs/1-welcome.md)). It kind of sucks, but I think it's cool too. It supports **bold text**, `inline code`, custom `<span class="green">terminal</span> <span class="cyan">color</span> <span class="magenta">spans</span>`, formatted tables, and interactive command links.
+Also, you might have noticed that there's a markdown renderer (which is parsing this exact post! see source here: [~/blogs/1-welcome.md](cmd:nano ~/blogs/1-welcome.md)). It kind of sucks, but I think it's cool too. It supports **bold text**, `inline code`, custom `<span class="green">terminal</span> <span class="cyan">color</span> <span class="magenta">spans</span>`, formatted tables, and interactive command links.
 
 Feel free to create some files! (note: all the repo files are read-only and all the files you make are completely local)
 
