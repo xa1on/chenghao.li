@@ -1,5 +1,5 @@
 import { virtualFS } from '../gen/fs_manifest.js';
-import { HOME_PATH, VFS_INDEX_PATH } from './config.js';
+import { DEFAULT_USERNAME, HOME_PATH, VFS_INDEX_PATH } from './config.js';
 export { virtualFS };
 
 function deepMerge(target, source) {
@@ -354,6 +354,13 @@ export class FileSystem {
     } catch (e) {
       console.error('Failed to save permissions to localStorage', e);
     }
+  }
+
+  getOwner(pathArr) {
+    if (pathArr.length >= HOME_PATH.length && HOME_PATH.every((part, idx) => pathArr[idx] === part)) {
+      return { user: DEFAULT_USERNAME, group: DEFAULT_USERNAME };
+    }
+    return { user: 'root', group: 'root' };
   }
 
   getMode(pathArr) {

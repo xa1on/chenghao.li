@@ -100,6 +100,13 @@ export const chmod = {
         return;
       }
 
+      const owner = shell.fileSystem.getOwner(pathArr);
+      if (owner.user !== 'guest') {
+        shell.print(`chmod: changing permissions of '${pathArr.join('/') || '/'}': Operation not permitted`, 'color-error');
+        exitCode = 1;
+        return;
+      }
+
       const curMode = shell.fileSystem.getMode(pathArr);
       const newMode = applyMode(curMode, modeArg);
       if (newMode === null) {

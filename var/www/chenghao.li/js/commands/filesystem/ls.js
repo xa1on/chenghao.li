@@ -68,9 +68,10 @@ export const ls = {
       const fileClass = isExe ? 'color-green' : 'color-file';
       if (longFormat) {
         const perms = shell.fileSystem.formatModeString(targetPath);
+        const owner = shell.fileSystem.getOwner(targetPath);
         const sizeStr = formatSize(estimateSize(targetNode), humanReadable);
         const dateStr = getSimulatedDate();
-        shell.print(`${perms} 1 guest guest ${sizeStr.padStart(6)} ${dateStr} <span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
+        shell.print(`${perms} 1 ${owner.user.padEnd(5)} ${owner.group.padEnd(5)} ${sizeStr.padStart(6)} ${dateStr} <span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
       } else {
         shell.print(`<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
       }
@@ -140,10 +141,13 @@ export const ls = {
         totalBlocks += isDir ? 4 : Math.ceil(size / 1024) * 4;
 
         let linkPath = '';
+        let itemOwnerPath = [...targetPath, name];
         if (name === '.') {
           linkPath = '/' + targetPathStr;
+          itemOwnerPath = targetPath;
         } else if (name === '..') {
           linkPath = '/' + targetPath.slice(0, -1).join('/');
+          itemOwnerPath = targetPath.slice(0, -1);
         } else {
           linkPath = '/' + (targetPathStr ? targetPathStr + '/' : '') + name;
         }
@@ -166,7 +170,10 @@ export const ls = {
 
         const sizeStr = formatSize(size, humanReadable).padStart(6);
         const dateStr = getSimulatedDate();
-        lines.push(`${perms} ${String(linkCount).padStart(2)} guest guest ${sizeStr} ${dateStr} ${nameDisplay}`);
+        const owner = shell.fileSystem.getOwner(itemOwnerPath);
+        const userStr = owner.user.padEnd(5);
+        const groupStr = owner.group.padEnd(5);
+        lines.push(`${perms} ${String(linkCount).padStart(2)} ${userStr} ${groupStr} ${sizeStr} ${dateStr} ${nameDisplay}`);
       }
 
       shell.print(`total ${totalBlocks}`);
