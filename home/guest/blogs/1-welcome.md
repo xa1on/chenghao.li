@@ -47,13 +47,15 @@ Also, you might have noticed that there's a markdown renderer (which is parsing 
 
 Feel free to create some files! (note: all the repo files are read-only and all the files you make are completely local)
 
-Feel free to try out some of the [games](cmd:tetris) too: including [tetris](cmd:tetris), [invaders](cmd:invaders), [snake](cmd:snake), [minesweeper](cmd:minesweeper), and [sokoban](cmd:sokoban)! I hope to add a lot more in the future.
+Also, try out some of the [games](cmd:tetris) too: including [tetris](cmd:tetris), [invaders](cmd:invaders), [snake](cmd:snake), [minesweeper](cmd:minesweeper), and [sokoban](cmd:sokoban)! I hope to add a lot more in the future.
 
 ---
 
 ## <span class="yellow">#</span> Final thoughts
 
 I'm very happy with how it turned out and I think it's pretty cool.
+
+also i hid a easter egg in the file system. feel free to explore and try to find it :D
 
 ---
 
