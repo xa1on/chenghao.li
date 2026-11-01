@@ -14,12 +14,15 @@ import {
   findCommentIndex,
   parseArgs,
   expandVariables,
-  splitCommandChainsWithOps
+  splitCommandChainsWithOps,
+  parseRedirection
 } from './parser.js';
+import { runScript } from './script_runner.js';
 import { LineEditor } from './line_editor.js';
 
 export class Shell {
   constructor(options = {}) {
+    this.redirectCapture = null;
     this.body = document.getElementById('terminal-body');
     this.output = document.getElementById('terminal-output');
     this.glowBackdrops = [
@@ -332,7 +335,12 @@ export class Shell {
               await this.handleInputSubmit(`cd ${relativePath}`);
               await this.handleInputSubmit('ls');
             } else if (type === 'file') {
-              await this.handleInputSubmit(`cat ${relativePath}`);
+              if (relativePath.endsWith('.sh')) {
+                const execCmd = relativePath.includes('/') ? relativePath : `./${relativePath}`;
+                await this.handleInputSubmit(execCmd);
+              } else {
+                await this.handleInputSubmit(`cat ${relativePath}`);
+              }
             } else if (type === 'broken') {
               this.print(`ls: cannot access '${relativePath}': No such file or directory`, 'color-error');
             }
@@ -423,7 +431,25 @@ export class Shell {
     }
   }
 
+  htmlToPlainText(htmlStr) {
+    if (typeof htmlStr !== 'string') return '';
+    return htmlStr
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#039;/g, "'");
+  }
+
   print(htmlContent, className = 'color-text') {
+    if (this.redirectCapture !== null && className !== 'color-error') {
+      this.redirectCapture.push(this.htmlToPlainText(htmlContent));
+      return null;
+    }
+
     const line = document.createElement('div');
     line.className = className;
     line.innerHTML = htmlContent;
@@ -545,12 +571,12 @@ export class Shell {
     }
   }
 
-  async executeCommand(cmdStr) {
+  async executeCommand(cmdStr, echoPrompt = true) {
     let trimmed = cmdStr.trim();
     if (trimmed === '') return;
 
-    // 1. Bash History Expansions (!! and !$)
-    if (this.commandHistory.length > 1) {
+    // 1. Bash History Expansions (!! and !$) - only for interactive commands
+    if (echoPrompt && this.commandHistory.length > 1) {
       const prevCmd = this.commandHistory[this.commandHistory.length - 2];
       const prevArgs = parseArgs(prevCmd);
       const prevLastArg = prevArgs.length > 0 ? prevArgs[prevArgs.length - 1] : '';
@@ -579,7 +605,7 @@ export class Shell {
       const { cmd, op } = chains[i];
 
       if (shouldRun) {
-        const exitCode = await this.executeSingleCommand(cmd);
+        const exitCode = await this.executeSingleCommand(cmd, echoPrompt);
         this.lastExitCode = (typeof exitCode === 'number') ? exitCode : 0;
         this.env['?'] = this.lastExitCode;
 
@@ -599,7 +625,7 @@ export class Shell {
     }
   }
 
-  async executeSingleCommand(cmdStr) {
+  async executeSingleCommand(cmdStr, echoPrompt = true) {
     const trimmed = cmdStr.trim();
     if (trimmed === '') return 0;
 
@@ -615,34 +641,105 @@ export class Shell {
       commandPart = commandPartStr.trim();
     }
 
-    this.print(`${this.getPromptHtml()} ${printedLine}`);
+    if (echoPrompt) {
+      this.print(`${this.getPromptHtml()} ${printedLine}`);
+    }
 
     if (commandPart === '') return 0;
+
+    // Check for redirection (> or >>)
+    const redirection = parseRedirection(commandPart);
+    if (redirection) {
+      commandPart = redirection.command;
+      if (!redirection.target) {
+        this.print("-bash: syntax error near unexpected token 'newline'", 'color-error');
+        return 2;
+      }
+      this.redirectCapture = [];
+    }
 
     // 3. Variable expansion ($USER, $HOME, $PWD, $?)
     const expandedCommand = expandVariables(commandPart, this.getEnv());
     const parts = parseArgs(expandedCommand);
-    if (parts.length === 0) return 0;
+    if (parts.length === 0) {
+      this.redirectCapture = null;
+      return 0;
+    }
 
-    const command = parts[0].toLowerCase();
+    const command = parts[0];
+    const lowerCommand = command.toLowerCase();
     const args = parts.slice(1);
 
-    if (typeof document !== 'undefined') {
+    if (typeof document !== 'undefined' && echoPrompt) {
       document.title = `${command} - ${this.currentUsername}@${this.hostname}: ${displayPath}`;
     }
 
-    if (command !== 'cd' && !this.isBooting) {
+    if (lowerCommand !== 'cd' && !this.isBooting && echoPrompt) {
       this.updateBrowserUrl(this.formatDisplayPath(), commandPart);
     }
 
+    let runExitCode = 0;
+
     try {
-      if (this.commands[command]) {
-        const cmd = this.commands[command];
+      // 1. Direct path execution (e.g. ./script.sh, /home/guest/test.sh)
+      if (command.includes('/')) {
+        const resolved = this.fileSystem.resolvePath(this.currentPath, command);
+        if (resolved === null) {
+          this.print(`-bash: ${command}: No such file or directory`, 'color-error');
+          return 127;
+        }
+        const node = this.fileSystem.getNodeByPath(resolved);
+        if (node === null) {
+          this.print(`-bash: ${command}: No such file or directory`, 'color-error');
+          return 127;
+        }
+        if (typeof node === 'object' && !this.fileSystem.isSymlink?.(node)) {
+          this.print(`-bash: ${command}: Is a directory`, 'color-error');
+          return 126;
+        }
+        if (!this.fileSystem.isExecutable(resolved)) {
+          this.print(`-bash: ${command}: Permission denied`, 'color-error');
+          this.print(`<span class="color-dim">Tip: Run '</span><span class="blue cmd-link" data-cmd="chmod +x ${escapeHTML(command)}">chmod +x ${escapeHTML(command)}</span><span class="color-dim">' to make this script executable, or run with '</span><span class="blue cmd-link" data-cmd="bash ${escapeHTML(command)}">bash ${escapeHTML(command)}</span><span class="color-dim">'.</span>`);
+          return 126;
+        }
+
+        try {
+          const content = await this.fileSystem.readFile(resolved);
+          runExitCode = await runScript(content, this, command, args, true);
+          return runExitCode;
+        } catch (err) {
+          this.print(`-bash: ${command}: ${err.message}`, 'color-error');
+          return 1;
+        }
+      }
+
+      // 2. Builtin aliases: [ and .
+      if (command === '[') {
+        if (args.length === 0 || args[args.length - 1] !== ']') {
+          this.print("[: missing ']'", 'color-error');
+          return 2;
+        }
+        const testArgs = args.slice(0, -1);
+        if (this.commands['test']) {
+          runExitCode = await this.commands['test'].run(testArgs, this);
+          return typeof runExitCode === 'number' ? runExitCode : 0;
+        }
+      }
+
+      if (command === '.') {
+        if (this.commands['source']) {
+          runExitCode = await this.commands['source'].run(args, this);
+          return typeof runExitCode === 'number' ? runExitCode : 0;
+        }
+      }
+
+      if (this.commands[lowerCommand]) {
+        const cmd = this.commands[lowerCommand];
 
         if (cmd.lazy) {
           try {
             const module = await cmd.import();
-            const loadedCmd = module[command];
+            const loadedCmd = module[lowerCommand];
             if (loadedCmd) {
               Object.assign(cmd, loadedCmd);
               cmd.lazy = false;
@@ -675,7 +772,8 @@ export class Shell {
         }
 
         const runResult = await cmd.run(args, this);
-        return typeof runResult === 'number' ? runResult : 0;
+        runExitCode = typeof runResult === 'number' ? runResult : 0;
+        return runExitCode;
       }
 
       this.print(`-bash: ${command}: command not found`, 'color-error');
@@ -685,7 +783,36 @@ export class Shell {
       this.print(`Error: ${err.message}`, 'color-error');
       return 1;
     } finally {
-      if (typeof document !== 'undefined') {
+      if (redirection) {
+        const captured = this.redirectCapture ? this.redirectCapture.join('\n') : '';
+        this.redirectCapture = null;
+
+        let targetFile = redirection.target.trim();
+        if ((targetFile.startsWith('"') && targetFile.endsWith('"')) || (targetFile.startsWith("'") && targetFile.endsWith("'"))) {
+          targetFile = targetFile.slice(1, -1);
+        }
+
+        const resolved = this.fileSystem.resolveParentAndName(this.currentPath, targetFile);
+        if (resolved === null) {
+          this.print(`-bash: ${targetFile}: No such file or directory`, 'color-error');
+        } else {
+          const targetPath = [...resolved.resolvedParent, resolved.name];
+          let finalContent = captured;
+          if (redirection.op === '>>') {
+            try {
+              const existing = await this.fileSystem.readFile(targetPath);
+              finalContent = (existing ? existing + '\n' : '') + captured;
+            } catch (_) {}
+          }
+          try {
+            this.fileSystem.writeFile(targetPath, finalContent);
+          } catch (err) {
+            this.print(`-bash: ${targetFile}: ${err.message}`, 'color-error');
+          }
+        }
+      }
+
+      if (typeof document !== 'undefined' && echoPrompt) {
         document.title = `${this.currentUsername}@${this.hostname}: ${this.formatDisplayPath()}`;
       }
     }

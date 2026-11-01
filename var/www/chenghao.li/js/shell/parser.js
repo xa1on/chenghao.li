@@ -124,9 +124,10 @@ export function expandVariables(str, env = {}) {
     }
 
     if (char === '$' && !inSingleQuote) {
-      // Check for $?
-      if (str[i + 1] === '?') {
-        result += env['?'] !== undefined ? String(env['?']) : '0';
+      // Check for special POSIX single-char variables: $?, $#, $@, $*, $!, $$
+      if (['?', '#', '@', '*', '!', '$'].includes(str[i + 1])) {
+        const specialChar = str[i + 1];
+        result += env[specialChar] !== undefined ? String(env[specialChar]) : '';
         i++;
         continue;
       }
@@ -237,3 +238,44 @@ export function splitCommandChainsWithOps(str) {
 export function splitCommandChains(str) {
   return splitCommandChainsWithOps(str).map(entry => entry.cmd);
 }
+
+/**
+ * Parses redirection operators (> and >>) outside quotes.
+ */
+export function parseRedirection(str) {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escaped = false;
+
+  for (let i = 0; i < str.length; i++) {
+    const char = str[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+    if (char === '>' && !inSingleQuote && !inDoubleQuote) {
+      const isAppend = (str[i + 1] === '>');
+      const cmdPart = str.slice(0, i).trim();
+      const targetPart = str.slice(i + (isAppend ? 2 : 1)).trim();
+      return {
+        command: cmdPart,
+        target: targetPart,
+        op: isAppend ? '>>' : '>'
+      };
+    }
+  }
+  return null;
+}
+

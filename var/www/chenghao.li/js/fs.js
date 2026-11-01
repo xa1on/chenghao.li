@@ -132,13 +132,19 @@ export class FileSystem {
     this.root = JSON.parse(JSON.stringify(virtualFS));
     this.userTree = {};
 
-    // Load user filesystem from localStorage
+    this.permissions = {};
+
+    // Load user filesystem and permissions from localStorage
     try {
       if (typeof localStorage !== 'undefined') {
         const saved = localStorage.getItem('vfs_user_tree');
         if (saved) {
           this.userTree = JSON.parse(saved);
           deepMerge(this.root, this.userTree);
+        }
+        const savedPerms = localStorage.getItem('vfs_permissions');
+        if (savedPerms) {
+          this.permissions = JSON.parse(savedPerms);
         }
       }
     } catch (e) {
@@ -338,6 +344,64 @@ export class FileSystem {
     } catch (e) {
       console.error('Failed to save user filesystem to localStorage', e);
     }
+  }
+
+  savePermissions() {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('vfs_permissions', JSON.stringify(this.permissions));
+      }
+    } catch (e) {
+      console.error('Failed to save permissions to localStorage', e);
+    }
+  }
+
+  getMode(pathArr) {
+    const key = '/' + pathArr.join('/');
+    if (this.permissions[key] !== undefined) {
+      return this.permissions[key];
+    }
+    const node = this.getNodeByPath(pathArr);
+    if (node !== null && typeof node === 'object' && !isSymlink(node)) {
+      return 0o755;
+    }
+    const fileName = pathArr[pathArr.length - 1] || '';
+    if (fileName.endsWith('.sh')) {
+      return 0o755;
+    }
+    return 0o644;
+  }
+
+  setMode(pathArr, mode) {
+    const key = '/' + pathArr.join('/');
+    this.permissions[key] = mode;
+    this.savePermissions();
+  }
+
+  isExecutable(pathArr) {
+    const node = this.getNodeByPath(pathArr);
+    if (node !== null && typeof node === 'object' && !isSymlink(node)) {
+      return false;
+    }
+    const mode = this.getMode(pathArr);
+    return (mode & 0o111) !== 0;
+  }
+
+  formatModeString(pathArr) {
+    const node = this.getNodeByPath(pathArr);
+    const isDir = node !== null && typeof node === 'object' && !isSymlink(node);
+    const mode = this.getMode(pathArr);
+    const rwx = (m) => {
+      const r = (m & 4) ? 'r' : '-';
+      const w = (m & 2) ? 'w' : '-';
+      const x = (m & 1) ? 'x' : '-';
+      return r + w + x;
+    };
+    const prefix = isDir ? 'd' : (isSymlink(node) ? 'l' : '-');
+    const u = rwx((mode >> 6) & 7);
+    const g = rwx((mode >> 3) & 7);
+    const o = rwx(mode & 7);
+    return prefix + u + g + o;
   }
 
   resolveParentAndName(currentPath, pathStr) {

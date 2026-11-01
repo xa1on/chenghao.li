@@ -48,6 +48,11 @@ export const parseInline = (line, vfs = {}, basePathArr = []) => {
   // 2. Links
   processed = processed.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, href) => {
     const cleanHref = href.trim();
+    if (/^cmd:/i.test(cleanHref)) {
+      const cmd = cleanHref.replace(/^cmd:/i, '').trim();
+      return `<span class="color-link cmd-link" data-cmd="${escapeHTML(cmd)}">${text}</span>`;
+    }
+
     if (/^javascript:/i.test(cleanHref)) {
       return `<span class="color-text" title="Blocked: javascript link">${text}</span>`;
     }

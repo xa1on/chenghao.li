@@ -9,7 +9,7 @@ export const UNIMPLEMENTED_BASH_BUILTINS = [
   'complete', 'compopt', 'continue', 'coproc', 'dirs', 'disown', 'enable',
   'eval', 'exec', 'export', 'false', 'fc', 'fg', 'getopts', 'hash', 'jobs',
   'kill', 'let', 'local', 'popd', 'pushd', 'read', 'readarray', 'readonly',
-  'return', 'select', 'set', 'shift', 'shopt', 'source', 'suspend', 'test',
+  'return', 'select', 'set', 'shift', 'shopt', 'suspend',
   'times', 'trap', 'true', 'type', 'typeset', 'ulimit', 'umask', 'unalias',
   'unset', 'until', 'wait'
 ];
@@ -141,6 +141,46 @@ export const BASH_BUILTINS = {
     Exit Status:
     Returns 0 unless an invalid option is given or the current directory
     cannot be read.`
+  },
+  test: {
+    name: 'test',
+    synopsis: 'test [expr]',
+    shortDesc: 'Evaluate conditional expression.',
+    doc: `test: test [expr]
+    Evaluate conditional expression.
+
+    Exits with a status of 0 (true) or 1 (false) depending on
+    the evaluation of EXPR.  Expressions may be unary or binary.
+
+    File operators:
+      -d FILE        True if FILE exists and is a directory.
+      -e FILE        True if FILE exists.
+      -f FILE        True if FILE exists and is a regular file.
+      -x FILE        True if FILE exists and is executable.
+
+    String operators:
+      -z STRING      True if string is empty.
+      -n STRING      True if string is not empty.
+      STRING1 = STRING2
+                     True if the strings are equal.
+      STRING1 != STRING2
+                     True if the strings are not equal.
+
+    Other operators:
+      ! EXPR         True if expr is false.`
+  },
+  source: {
+    name: 'source',
+    synopsis: 'source filename [arguments]',
+    shortDesc: 'Execute commands from a file in the current shell.',
+    doc: `source: source filename [arguments]
+    Execute commands from a file in the current shell.
+
+    Read and execute commands from FILENAME in the current shell.  The
+    entries in $PATH are not used.
+
+    Exit Status:
+    Returns the status of the last command executed in FILENAME.`
   }
 };
 

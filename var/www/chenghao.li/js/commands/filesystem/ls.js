@@ -64,12 +64,15 @@ export const ls = {
     if (typeof targetNode !== 'object') {
       const absolutePath = '/' + targetPath.join('/');
       const fileName = targetPath[targetPath.length - 1];
+      const isExe = shell.fileSystem.isExecutable(targetPath);
+      const fileClass = isExe ? 'color-green' : 'color-file';
       if (longFormat) {
+        const perms = shell.fileSystem.formatModeString(targetPath);
         const sizeStr = formatSize(estimateSize(targetNode), humanReadable);
         const dateStr = getSimulatedDate();
-        shell.print(`-rw-r--r-- 1 guest guest ${sizeStr.padStart(6)} ${dateStr} <span class="color-file ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
+        shell.print(`${perms} 1 guest guest ${sizeStr.padStart(6)} ${dateStr} <span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
       } else {
-        shell.print(`<span class="color-file ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
+        shell.print(`<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
       }
       return 0;
     }
@@ -121,12 +124,12 @@ export const ls = {
             const resolvedTarget = shell.fileSystem.resolvePath(targetPath, itemNode.symlink);
             if (resolvedTarget !== null) {
               targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
-              isDir = typeof targetObj === 'object';
+              isDir = targetObj !== null && typeof targetObj === 'object';
             }
           } else {
-            isDir = typeof itemNode === 'object';
+            isDir = itemNode !== null && typeof itemNode === 'object';
+            perms = shell.fileSystem.formatModeString([...targetPath, name]);
             if (isDir) {
-              perms = 'drwxr-xr-x';
               linkCount = Object.keys(itemNode).length + 2;
             } else {
               size = estimateSize(itemNode);
@@ -156,7 +159,9 @@ export const ls = {
         } else if (isDir) {
           nameDisplay = `<span class="color-dir ls-item" data-type="dir" data-path="${linkPath}">${name}/</span>`;
         } else {
-          nameDisplay = `<span class="color-file ls-item" data-type="file" data-path="${linkPath}">${name}</span>`;
+          const isExe = shell.fileSystem.isExecutable([...targetPath, name]);
+          const fileClass = isExe ? 'color-green' : 'color-file';
+          nameDisplay = `<span class="${fileClass} ls-item" data-type="file" data-path="${linkPath}">${name}</span>`;
         }
 
         const sizeStr = formatSize(size, humanReadable).padStart(6);
@@ -192,14 +197,17 @@ export const ls = {
             return `<span class="red ls-item" data-type="broken" data-path="${absolutePath}">${name}@</span>`;
           }
           const targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
-          isDir = typeof targetObj === 'object';
+          isDir = targetObj !== null && typeof targetObj === 'object';
           return `<span class="cyan ls-item" data-type="${isDir ? 'dir' : 'file'}" data-path="${absolutePath}">${name}@</span>`;
         }
 
-        isDir = typeof itemNode === 'object';
-        return isDir
-          ? `<span class="color-dir ls-item" data-type="dir" data-path="${absolutePath}">${name}/</span>`
-          : `<span class="color-file ls-item" data-type="file" data-path="${absolutePath}">${name}</span>`;
+        isDir = itemNode !== null && typeof itemNode === 'object';
+        if (isDir) {
+          return `<span class="color-dir ls-item" data-type="dir" data-path="${absolutePath}">${name}/</span>`;
+        }
+        const isExe = shell.fileSystem.isExecutable([...targetPath, name]);
+        const fileClass = isExe ? 'color-green' : 'color-file';
+        return `<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${name}</span>`;
       });
 
       if (formattedItems.length === 0) {
