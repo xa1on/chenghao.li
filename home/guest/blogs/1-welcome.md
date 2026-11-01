@@ -1,4 +1,6 @@
-# welcome to my personal website!
+---
+
+# Welcome to my personal website!
 
 For this first post, I just wanted to write about my process of creating my website. I've had the idea to do a **terminal style website** forever and had sat on this domain for over a year before I even got started with it. I really do think that what I made is unique and I'm pretty proud of it.
 
