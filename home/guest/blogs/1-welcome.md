@@ -53,3 +53,8 @@ Feel free to try out some of the [games](cmd:tetris) too: including [tetris](cmd
 
 I'm very happy with how it turned out and I think it's pretty cool.
 
+---
+
+(SCROLL TO THE TOP TO READ THE WHOLE THING!!!)
+
+---
