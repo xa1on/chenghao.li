@@ -18,7 +18,7 @@ fi
 echo ""
 echo "--- Checking Virtual Filesystem ---"
 if [ -d "games" ]; then
-  echo "✓ 'games' directory detected in current path."
+  echo " 'games' directory detected in current path."
   echo "Scanning available games:"
   for game in sokoban invaders tetris minesweeper; do
     echo "  * $game"
@@ -32,7 +32,7 @@ if [ -d "blogs" ]; then
 fi
 
 echo ""
-echo "--- Testing Loop & Calculations ---"
+echo "--- Testing ---"
 COUNT=0
 for step in "Compiling VFS" "Checking Permissions" "Validating Subshell"; do
   COUNT=1
@@ -40,8 +40,6 @@ for step in "Compiling VFS" "Checking Permissions" "Validating Subshell"; do
 done
 
 echo ""
-echo "========================================================"
 echo "Shell script executed successfully!"
 echo "Feel free to create and edit your own scripts using 'nano' or 'vim'!"
 echo "Try running: nano my_script.sh to also view the script"
-echo "========================================================"
