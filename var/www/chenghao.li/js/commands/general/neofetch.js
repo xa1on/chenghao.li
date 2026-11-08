@@ -1,4 +1,4 @@
-import { HOSTNAME } from '../../config.js?v=2c3dbc7cd0';
+import { HOSTNAME } from '../../config.js';
 
 export const neofetch = {
   name: 'neofetch',

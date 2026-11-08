@@ -1,6 +1,6 @@
-import { audio } from '../audio.js?v=3298f25b61';
-import { escapeHTML } from '../utils/markdown.js?v=666e27d2b6';
-import { findCommentIndex, parseArgs } from './parser.js?v=2967fc0eb5';
+import { audio } from '../audio.js';
+import { escapeHTML } from '../utils/markdown.js';
+import { findCommentIndex, parseArgs } from './parser.js';
 
 /**
  * GNU Readline Emacs-style interactive line editor.

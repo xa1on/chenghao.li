@@ -1,43 +1,29 @@
-import { HOME_PATH } from '../../config.js?v=2c3dbc7cd0';
+import { HOME_PATH } from '../../config.js';
 
 export const cd = {
   name: 'cd',
   description: 'Change the current working directory.',
   category: 'filesystem',
   options: [
-    { flags: ['-L'], description: 'Force symbolic links to be followed.' },
-    { flags: ['-P'], description: 'Use physical directory structure without following symbolic links.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'mode', flags: ['-L'], value: 'logical', default: 'logical', description: 'Force symbolic links to be followed.' },
+    { name: 'mode', flags: ['-P'], value: 'physical', description: 'Use physical directory structure without following symbolic links.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'path', description: 'The directory path to change to.', required: false, type: 'dir' }
   ],
-  run: async (args, shell) => {
+  run: async (args, shell, flags = {}) => {
     const home = shell.homePath || HOME_PATH;
-    let physical = false;
-    const paths = [];
+    const physical = flags.mode === 'physical';
 
-    for (const arg of args) {
-      if (arg === '-P') {
-        physical = true;
-      } else if (arg === '-L') {
-        physical = false;
-      } else if (!arg.startsWith('-') || arg === '-' || arg === '~') {
-        paths.push(arg);
-      } else {
-        shell.print(`cd: invalid option -- '${arg}'`, 'color-error');
-        return 1;
-      }
-    }
-
-    if (paths.length === 0 || paths[0] === '~') {
+    if (args.length === 0 || args[0] === '~') {
       shell.previousPath = [...shell.currentPath];
       shell.currentPath = [...home];
       if (!shell.isBooting && typeof shell.updateBrowserUrl === 'function') shell.updateBrowserUrl('~');
       return 0;
     }
 
-    const pathArg = paths[0];
+    const pathArg = args[0];
 
     // cd - toggles back to previous directory
     if (pathArg === '-') {

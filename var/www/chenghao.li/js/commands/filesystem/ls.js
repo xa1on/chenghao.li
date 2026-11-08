@@ -3,52 +3,20 @@ export const ls = {
   description: 'List contents of a directory with flag support (-a, -l, -h).',
   category: 'filesystem',
   options: [
-    { flags: ['-a', '--all'], description: 'Do not ignore entries starting with .' },
-    { flags: ['-l'], description: 'Use a long listing format.' },
-    { flags: ['-h', '--human-readable'], description: 'With -l, print human-readable sizes (e.g. 1K, 234M).' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'all', flags: ['-a', '--all'], type: 'boolean', description: 'Do not ignore entries starting with .' },
+    { name: 'long', flags: ['-l'], type: 'boolean', description: 'Use a long listing format.' },
+    { name: 'humanReadable', flags: ['-h', '--human-readable'], type: 'boolean', description: 'With -l, print human-readable sizes (e.g. 1K, 234M).' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'path', description: 'Optional path to list contents of.', required: false, variadic: true }
   ],
-  run: async (args, shell) => {
-    let showAll = false;
-    let longFormat = false;
-    let humanReadable = false;
-    const paths = [];
+  run: async (args, shell, flags = {}) => {
+    const showAll = Boolean(flags.all || flags.a);
+    const longFormat = Boolean(flags.long || flags.l);
+    const humanReadable = Boolean(flags.humanReadable || flags.h);
 
-    // Parse options vs paths
-    for (const arg of args) {
-      if (arg.startsWith('-') && arg.length > 1) {
-        if (arg === '--all') {
-          showAll = true;
-          continue;
-        }
-        if (arg === '--help') {
-          if (typeof shell.printCommandHelp === 'function') {
-            shell.printCommandHelp(ls);
-          } else {
-            shell.print("Usage: ls [-a] [-l] [-h] [path]\nFor full manual page, try 'man ls'.");
-          }
-          return 0;
-        }
-        for (let i = 1; i < arg.length; i++) {
-          const flag = arg[i];
-          if (flag === 'a') showAll = true;
-          else if (flag === 'l') longFormat = true;
-          else if (flag === 'h') humanReadable = true;
-          else {
-            shell.print(`ls: invalid option -- '${flag}'`, 'color-error');
-            shell.print("Try 'ls --help' for more information.");
-            return 1;
-          }
-        }
-      } else {
-        paths.push(arg);
-      }
-    }
-
-    const targets = paths.length > 0 ? paths : [null];
+    const targets = args.length > 0 ? args : [null];
     let exitCode = 0;
 
     for (let idx = 0; idx < targets.length; idx++) {

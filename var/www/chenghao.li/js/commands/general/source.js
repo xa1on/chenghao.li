@@ -1,4 +1,4 @@
-import { runScript } from '../../shell/script_runner.js?v=c35bdf10df';
+import { runScript } from '../../shell/script_runner.js';
 
 async function handleSource(args, shell, isDot = false) {
   const cmdName = isDot ? '.' : 'source';

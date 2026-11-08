@@ -3,12 +3,12 @@ export const history = {
   description: 'Display command history list or clear it.',
   category: 'general',
   options: [
-    { flags: ['-c'], description: 'Clear the command history list.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'clear', flags: ['-c'], type: 'boolean', description: 'Clear the command history list.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [],
-  run: async (args, shell) => {
-    if (args.length > 0 && args[0] === '-c') {
+  run: async (args, shell, flags = {}) => {
+    if (flags.clear || flags.c) {
       shell.commandHistory = [];
       shell.historyIndex = 0;
       shell.print('Command history cleared.');

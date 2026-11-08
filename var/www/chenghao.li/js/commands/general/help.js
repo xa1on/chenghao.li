@@ -189,38 +189,17 @@ export const help = {
   description: 'Display information about builtin commands.',
   category: 'general',
   options: [
-    { flags: ['-d'], description: 'Output short description for each topic.' },
-    { flags: ['-m'], description: 'Display usage in pseudo-manpage format.' },
-    { flags: ['-s'], description: 'Output only a short usage synopsis for each topic matching PATTERN.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'mode', flags: ['-d'], value: 'description', description: 'Output short description for each topic.' },
+    { name: 'mode', flags: ['-m'], value: 'normal', description: 'Display usage in pseudo-manpage format.' },
+    { name: 'mode', flags: ['-s'], value: 'synopsis', description: 'Output only a short usage synopsis for each topic matching PATTERN.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'pattern', description: 'Pattern or name of builtin command.', required: false, suggestions: () => Object.keys(BASH_BUILTINS) }
   ],
-  run: async (args, shell) => {
-    let mode = 'normal'; // 'normal', 'synopsis' (-s), 'description' (-d)
-    let pattern = '';
-
-    // Parse options
-    const filteredArgs = [];
-    for (const arg of args) {
-      if (arg === '-s') {
-        mode = 'synopsis';
-      } else if (arg === '-d') {
-        mode = 'description';
-      } else if (arg === '-m') {
-        mode = 'normal';
-      } else if (arg.startsWith('-')) {
-        shell.print(`bash: help: ${arg}: invalid option\nhelp: usage: help [-dms] [pattern ...]`, 'color-error');
-        return 2;
-      } else {
-        filteredArgs.push(arg);
-      }
-    }
-
-    if (filteredArgs.length > 0) {
-      pattern = filteredArgs[0].toLowerCase();
-    }
+  run: async (args, shell, flags = {}) => {
+    const mode = flags.mode || 'normal';
+    const pattern = (args[0] || '').toLowerCase();
 
     // When querying a specific topic or pattern
     if (pattern) {

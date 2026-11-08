@@ -3,42 +3,25 @@ export const mkdir = {
   description: 'Create a new directory.',
   category: 'filesystem',
   options: [
-    { flags: ['-p', '--parents'], description: 'No error if existing, make parent directories as needed.' },
-    { flags: ['-v', '--verbose'], description: 'Print a message for each created directory.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'parents', flags: ['-p', '--parents'], type: 'boolean', description: 'No error if existing, make parent directories as needed.' },
+    { name: 'verbose', flags: ['-v', '--verbose'], type: 'boolean', description: 'Print a message for each created directory.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'directory_name', description: 'Name of the new directory to create.', required: true, type: 'dir', variadic: true }
   ],
-  run: async (args, shell) => {
-    let parents = false;
-    let verbose = false;
-    const paths = [];
+  run: async (args, shell, flags = {}) => {
+    const parents = Boolean(flags.parents || flags.p);
+    const verbose = Boolean(flags.verbose || flags.v);
 
-    for (const arg of args) {
-      if (arg === '-p' || arg === '--parents') {
-        parents = true;
-      } else if (arg === '-v' || arg === '--verbose') {
-        verbose = true;
-      } else if (arg === '-pv' || arg === '-vp') {
-        parents = true;
-        verbose = true;
-      } else if (!arg.startsWith('-')) {
-        paths.push(arg);
-      } else {
-        shell.print(`mkdir: invalid option -- '${arg}'`, 'color-error');
-        return 1;
-      }
-    }
-
-    if (paths.length === 0) {
+    if (args.length === 0) {
       shell.print('mkdir: missing operand', 'color-error');
       shell.print("Try 'mkdir --help' for more information.");
       return 1;
     }
 
     let status = 0;
-    for (const pathArg of paths) {
+    for (const pathArg of args) {
       if (parents) {
         const isAbsolute = pathArg.startsWith('/');
         const isTilde = pathArg === '~' || pathArg.startsWith('~/');

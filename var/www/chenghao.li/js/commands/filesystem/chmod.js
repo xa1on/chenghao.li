@@ -2,34 +2,25 @@ export const chmod = {
   name: 'chmod',
   description: 'Change file mode bits (permissions).',
   category: 'filesystem',
+  allowUnknownOptions: true,
   options: [
-    { flags: ['-R', '--recursive'], description: 'Change files and directories recursively.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'recursive', flags: ['-R', '--recursive'], type: 'boolean', description: 'Change files and directories recursively.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'mode', description: 'Mode specification (e.g. +x, -x, 755, 644).', required: true, suggestions: ['+x', '-x', '755', '644', '600', '777'] },
     { name: 'file', description: 'File or directory to modify.', required: true, variadic: true }
   ],
-  run: async (args, shell) => {
+  run: async (args, shell, flags = {}) => {
     if (args.length < 2) {
       shell.print('chmod: missing operand', 'color-error');
       shell.print('Try \'chmod --help\' for more information.');
       return 1;
     }
 
-    let recursive = false;
-    let modeArg = null;
-    const fileArgs = [];
-
-    for (const arg of args) {
-      if (arg === '-R' || arg === '--recursive') {
-        recursive = true;
-      } else if (modeArg === null) {
-        modeArg = arg;
-      } else {
-        fileArgs.push(arg);
-      }
-    }
+    const recursive = Boolean(flags.recursive || flags.R);
+    const modeArg = args[0];
+    const fileArgs = args.slice(1);
 
     if (!modeArg || fileArgs.length === 0) {
       shell.print('chmod: missing operand', 'color-error');

@@ -1,11 +1,15 @@
-import { BaseEditor, runEditor } from '../../utils/editor.js?v=24ca03e518';
-import { audio } from '../../audio.js?v=3298f25b61';
+import { BaseEditor, runEditor } from '../../utils/editor.js';
+import { audio } from '../../audio.js';
 
 export const vim = {
   name: 'vim',
   description: "Vi IMproved, a programmer's text editor.",
   category: 'filesystem',
   lazy: true,
+  allowUnknownOptions: true,
+  options: [
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
+  ],
   args: [
     { name: 'filename', description: 'File to edit or create.', required: true }
   ],
@@ -13,9 +17,6 @@ export const vim = {
     shortDesc: "Vi IMproved, a programmer's text editor",
     description: "Vim is a text editor that is upwards compatible to Vi. It can be used to edit all kinds of plain text. It is especially useful for editing programs.",
     synopsis: 'vim <filename>',
-    options: [
-      { flags: '<filename>', desc: 'File to open or create in the Vim editor.' }
-    ],
     examples: [
       { cmd: 'vim notes.txt', desc: 'Open or create notes.txt in Vim editor.' }
     ],

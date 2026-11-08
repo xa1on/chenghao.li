@@ -476,8 +476,8 @@ export const man = {
   description: 'An interface to the system reference manuals.',
   category: 'general',
   options: [
-    { flags: ['-k', '--apropos'], takesValue: true, suggestions: (sh) => Object.keys(sh.commands || {}), description: 'Search manual page names and descriptions for matching keywords.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'apropos', flags: ['-k', '--apropos'], type: 'string', suggestions: (sh) => Object.keys(sh.commands || {}), description: 'Search manual page names and descriptions for matching keywords.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'command', description: 'The command name to view manual for, or -k <keyword> to search.', required: false, suggestions: (sh) => Object.keys(sh.commands || {}) }
@@ -495,15 +495,11 @@ export const man = {
     ],
     seeAlso: 'help(1), info(1)'
   },
-  run: async (args, shell) => {
-    if (args.length === 0) {
-      shell.print("What manual page do you want?\nFor example, try 'man man' or 'man -k .' to view all available pages.");
-      return 1;
-    }
-
+  run: async (args, shell, flags = {}) => {
     // Handle apropos search (-k or --apropos)
-    if (args[0] === '-k' || args[0] === '--apropos') {
-      const keyword = args.slice(1).join(' ').trim().toLowerCase();
+    const aproposKeyword = flags.apropos || flags.k;
+    if (aproposKeyword) {
+      const keyword = String(aproposKeyword).trim().toLowerCase();
       if (!keyword) {
         shell.print("man: option requires an argument -- 'k'\nTry 'man --help' or 'man man' for more information.", 'color-error');
         return 1;
@@ -533,6 +529,11 @@ export const man = {
       }
       shell.print(out.trimEnd());
       return 0;
+    }
+
+    if (args.length === 0) {
+      shell.print("What manual page do you want?\nFor example, try 'man man' or 'man -k .' to view all available pages.");
+      return 1;
     }
 
     const targetName = args[0].toLowerCase();

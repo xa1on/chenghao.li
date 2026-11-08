@@ -2,10 +2,16 @@ export const cat = {
   name: 'cat',
   description: 'Display the contents of one or more text files, or render colored ASCII art.',
   category: 'filesystem',
+  options: [
+    { name: 'number', flags: ['-n', '--number'], type: 'boolean', description: 'Number all output lines.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
+  ],
   args: [
     { name: 'filename', description: 'The text file to display, or .art file to render.', required: true, variadic: true }
   ],
-  run: async (args, shell) => {
+  run: async (args, shell, flags = {}) => {
+    const numberLines = Boolean(flags.number || flags.n);
+
     if (args.length === 0) {
       shell.print('cat: missing file operand', 'color-error');
       return 1;
@@ -100,7 +106,14 @@ export const cat = {
 
       try {
         const content = await shell.fileSystem.readFile(resolved);
-        const output = fileName.endsWith('.md') ? shell.parseMarkdown(content, resolved.slice(0, -1)) : shell.escapeHTML(content);
+        let output = fileName.endsWith('.md') ? shell.parseMarkdown(content, resolved.slice(0, -1)) : shell.escapeHTML(content);
+        if (numberLines) {
+          const rawLines = content.split('\n');
+          output = rawLines.map((line, idx) => {
+            const num = String(idx + 1).padStart(6, ' ');
+            return `<span class="color-dim">${num}</span>  ${shell.escapeHTML(line)}`;
+          }).join('\n');
+        }
         shell.print(output);
       } catch (err) {
         shell.print(`cat: error reading ${fileArg}: ${err.message}`, 'color-error');

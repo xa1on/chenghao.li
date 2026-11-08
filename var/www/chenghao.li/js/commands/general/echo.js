@@ -2,34 +2,18 @@ export const echo = {
   name: 'echo',
   description: 'Print the input arguments to the terminal.',
   category: 'general',
+  disableHelp: true,
+  allowUnknownOptions: true,
   options: [
-    { flags: ['-e'], description: 'Enable interpretation of backslash escapes.' },
-    { flags: ['-E'], description: 'Disable interpretation of backslash escapes (default).' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'escapes', flags: ['-e'], value: true, default: false, description: 'Enable interpretation of backslash escapes.' },
+    { name: 'escapes', flags: ['-E'], value: false, description: 'Disable interpretation of backslash escapes (default).' }
   ],
   args: [
     { name: 'text', description: 'The text to print.', required: false, variadic: true }
   ],
-  run: async (args, shell) => {
-    let interpretEscapes = false;
-    let i = 0;
-
-    while (i < args.length && args[i].startsWith('-') && args[i].length > 1) {
-      const opt = args[i];
-      let valid = true;
-      let curEsc = interpretEscapes;
-      for (let j = 1; j < opt.length; j++) {
-        if (opt[j] === 'e') curEsc = true;
-        else if (opt[j] === 'E') curEsc = false;
-        else { valid = false; break; }
-      }
-      if (!valid) break;
-      interpretEscapes = curEsc;
-      i++;
-    }
-
-    let text = args.slice(i).join(' ');
-    if (interpretEscapes) {
+  run: async (args, shell, flags = {}) => {
+    let text = args.join(' ');
+    if (flags.escapes) {
       text = text
         .replace(/\\n/g, '\n')
         .replace(/\\t/g, '\t')

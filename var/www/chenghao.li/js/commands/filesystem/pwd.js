@@ -3,14 +3,14 @@ export const pwd = {
   description: 'Print the current working directory.',
   category: 'filesystem',
   options: [
-    { flags: ['-L'], description: 'Print the value of $PWD if it names the current working directory.' },
-    { flags: ['-P'], description: 'Print the physical directory, without any symbolic links.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'mode', flags: ['-L'], value: 'logical', default: 'logical', description: 'Print the value of $PWD if it names the current working directory.' },
+    { name: 'mode', flags: ['-P'], value: 'physical', description: 'Print the physical directory, without any symbolic links.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [],
-  run: async (args, shell) => {
+  run: async (args, shell, flags = {}) => {
     let pathArr = shell.currentPath;
-    if (args.includes('-P')) {
+    if (flags.mode === 'physical') {
       const resolved = shell.fileSystem.resolvePath([], '/' + pathArr.join('/'), true);
       if (resolved !== null) pathArr = resolved;
     }

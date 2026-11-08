@@ -1,4 +1,4 @@
-import { audio } from '../../audio.js?v=3298f25b61';
+import { audio } from '../../audio.js';
 
 export const tetris = {
   name: 'tetris',
@@ -6,31 +6,14 @@ export const tetris = {
   category: 'game',
   lazy: true,
   options: [
-    { flags: ['-c', '--cols', '-w', '--width'], takesValue: true, suggestions: ['10', '12', '16', '20'], description: 'Number of columns (default: 10, min: 4, max: 50).' },
-    { flags: ['-r', '--rows', '-h', '--height'], takesValue: true, suggestions: ['20', '24', '30'], description: 'Number of rows (default: 20, min: 20, max: 60).' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'cols', flags: ['-c', '--cols', '-w', '--width'], type: 'number', min: 4, max: 50, default: 10, suggestions: ['10', '12', '16', '20'], description: 'Number of columns (default: 10, min: 4, max: 50).' },
+    { name: 'rows', flags: ['-r', '--rows', '-h', '--height'], type: 'number', min: 20, max: 60, default: 20, suggestions: ['20', '24', '30'], description: 'Number of rows (default: 20, min: 20, max: 60).' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [],
-  run: async (args, shell) => {
-    let COLS = 10;
-    let ROWS = 20;
-
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      if (arg === '--cols' || arg === '-c' || arg === '--width' || arg === '-w') {
-        const val = parseInt(args[i + 1], 10);
-        if (!isNaN(val)) {
-          COLS = val;
-          i++;
-        }
-      } else if (arg === '--rows' || arg === '-r' || arg === '--height' || arg === '-h') {
-        const val = parseInt(args[i + 1], 10);
-        if (!isNaN(val)) {
-          ROWS = val;
-          i++;
-        }
-      }
-    }
+  run: async (args, shell, flags = {}) => {
+    const COLS = flags.cols ?? flags.width ?? flags.c ?? flags.w ?? 10;
+    const ROWS = flags.rows ?? flags.height ?? flags.r ?? flags.h ?? 20;
 
     if (isNaN(COLS) || COLS < 4 || COLS > 50) {
       shell.print('tetris: columns must be between 4 and 50', 'color-error');

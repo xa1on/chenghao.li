@@ -1,5 +1,5 @@
-import { audio } from '../audio.js?v=3298f25b61';
-import { parseMarkdown, escapeHTML } from '../utils/markdown.js?v=666e27d2b6';
+import { audio } from '../audio.js';
+import { parseMarkdown, escapeHTML } from '../utils/markdown.js';
 import {
   HOSTNAME,
   DEFAULT_USERNAME,
@@ -10,17 +10,18 @@ import {
   TYPEWRITER_DEFAULT_DELAY,
   MARKDOWN_WRAP_LIMIT,
   TAB_DOUBLE_PRESS_INTERVAL
-} from '../config.js?v=2c3dbc7cd0';
+} from '../config.js';
 import {
   findCommentIndex,
   parseArgs,
   expandVariables,
   splitCommandChainsWithOps,
-  parseRedirection
-} from './parser.js?v=2967fc0eb5';
-import { runScript } from './script_runner.js?v=c35bdf10df';
-import { LineEditor } from './line_editor.js?v=d1d74b2438';
-import { getCompletions } from './completer.js?v=e7bbebcc5b';
+  parseRedirection,
+  parseCommandArgs
+} from './parser.js';
+import { runScript } from './script_runner.js';
+import { LineEditor } from './line_editor.js';
+import { getCompletions } from './completer.js';
 
 export class Shell {
   constructor(options = {}) {
@@ -586,7 +587,7 @@ export class Shell {
 
   async executeCommand(cmdStr, echoPrompt = true) {
     let trimmed = cmdStr.trim();
-    if (trimmed === '') return;
+    if (trimmed === '') return 0;
 
     // 1. Bash History Expansions (!! and !$) - only for interactive commands
     if (echoPrompt && this.commandHistory.length > 1) {
@@ -636,6 +637,7 @@ export class Shell {
         }
       }
     }
+    return this.lastExitCode;
   }
 
   async executeSingleCommand(cmdStr, echoPrompt = true) {
@@ -763,9 +765,17 @@ export class Shell {
           }
         }
 
-        // Intercept -h or --help
-        const wantsHelp = args.includes('--help') || (args.includes('-h') && (
-          !cmd.options || cmd.options.some(o => Array.isArray(o.flags) ? o.flags.includes('-h') : o.flag === '-h')
+        // Parse options and arguments according to command specification
+        const parsed = parseCommandArgs(args, cmd);
+        if (parsed.error) {
+          this.print(`${command}: ${parsed.error}`, 'color-error');
+          this.print(`Try '${command} --help' for more information.`);
+          return 1;
+        }
+
+        // Intercept -h or --help declaratively
+        const wantsHelp = !cmd.disableHelp && (parsed.flags.help || (
+          args.includes('--help') && (!cmd.options || cmd.options.length === 0)
         ));
         if (wantsHelp) {
           this.printCommandHelp(cmd);
@@ -775,8 +785,8 @@ export class Shell {
         // Validate required arguments
         if (cmd.args && cmd.args.length > 0) {
           const requiredArgs = cmd.args.filter(a => a.required);
-          if (args.length < requiredArgs.length) {
-            const missingArg = requiredArgs[args.length];
+          if (parsed.length < requiredArgs.length) {
+            const missingArg = requiredArgs[parsed.length];
             let usage = cmd.name;
             const argUsageStrings = cmd.args.map(a => a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`);
             if (argUsageStrings.length > 0) {
@@ -787,7 +797,7 @@ export class Shell {
           }
         }
 
-        const runResult = await cmd.run(args, this);
+        const runResult = await cmd.run(parsed, this, parsed.flags);
         runExitCode = typeof runResult === 'number' ? runResult : 0;
         return runExitCode;
       }

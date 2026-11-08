@@ -1,15 +1,19 @@
-import { audio } from '../../audio.js?v=3298f25b61';
+import { audio } from '../../audio.js';
 
 export const pong = {
   name: 'pong',
   description: 'Play a game of Pong.',
   category: 'game',
   lazy: true,
+  options: [
+    { name: 'difficulty', flags: ['-d', '--difficulty'], type: 'string', suggestions: ['easy', 'medium', 'hard'], description: 'Difficulty level (easy, medium, hard).' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
+  ],
   args: [
     { name: 'difficulty', description: 'Difficulty level (easy, medium, hard).', required: false, suggestions: ['easy', 'medium', 'hard'] }
   ],
-  run: async (args, shell) => {
-    let diffText = args.length > 0 ? args[0].toLowerCase() : '';
+  run: async (args, shell, flags = {}) => {
+    let diffText = (flags.difficulty || flags.d || args[0] || '').toLowerCase();
 
     // Choose difficulty if none specified or invalid
     while (diffText !== 'easy' && diffText !== 'medium' && diffText !== 'hard' && diffText !== '1' && diffText !== '2' && diffText !== '3') {

@@ -1,4 +1,4 @@
-import { sound } from './sound.js?v=9ee3db3b17';
+import { sound } from './sound.js';
 
 export const unmute = {
   name: 'unmute',

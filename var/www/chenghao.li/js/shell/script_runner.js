@@ -1,7 +1,7 @@
 /**
  * Lightweight, modular Bash script runner with Linux parity.
  */
-import { parseArgs } from './parser.js?v=2967fc0eb5';
+import { parseArgs } from './parser.js';
 
 export function splitStatements(scriptText) {
   const statements = [];

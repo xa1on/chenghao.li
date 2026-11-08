@@ -1,42 +1,26 @@
-import { audio } from '../../audio.js?v=3298f25b61';
+import { audio } from '../../audio.js';
 
 export const paint = {
   name: 'paint',
   description: 'Create and edit ASCII art with colors and block characters.',
   category: 'filesystem',
   lazy: true,
-  args: [
-    { name: 'filename', description: 'File to edit or create (supports .art for colors, or .txt for plain text).', required: true },
-    { name: '--width, -w', description: 'Override the canvas width (optional).', required: false },
-    { name: '--height, -h', description: 'Override the canvas height (optional).', required: false }
+  options: [
+    { name: 'width', flags: ['-w', '--width'], type: 'number', min: 10, max: 200, suggestions: ['40', '60', '80'], description: 'Override the canvas width.' },
+    { name: 'height', flags: ['-h', '--height'], type: 'number', min: 5, max: 100, suggestions: ['20', '25', '30'], description: 'Override the canvas height.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
-  run: async (args, shell) => {
-    let fileArg = null;
-    let widthOverride = null;
-    let heightOverride = null;
-
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      if (arg === '--width' || arg === '-w') {
-        const val = parseInt(args[i + 1], 10);
-        if (!isNaN(val) && val > 0) {
-          widthOverride = val;
-          i++;
-        }
-      } else if (arg === '--height' || arg === '-h') {
-        const val = parseInt(args[i + 1], 10);
-        if (!isNaN(val) && val > 0) {
-          heightOverride = val;
-          i++;
-        }
-      } else if (!fileArg) {
-        fileArg = arg.trim();
-      }
-    }
+  args: [
+    { name: 'filename', description: 'File to edit or create (supports .art for colors, or .txt for plain text).', required: true }
+  ],
+  run: async (args, shell, flags = {}) => {
+    let fileArg = args[0] ? args[0].trim() : null;
+    const widthOverride = flags.width || flags.w || null;
+    const heightOverride = flags.height || flags.h || null;
 
     if (!fileArg) {
-      shell.print('paint: missing required argument &lt;filename&gt;. Usage: <span class="color-green">paint &lt;filename&gt; [--width, -w] [--height, -h]</span>', 'color-error');
-      return;
+      shell.print('paint: missing required argument &lt;filename&gt;. Usage: <span class="color-green">paint [OPTIONS] &lt;filename&gt;</span>', 'color-error');
+      return 1;
     }
 
     while (fileArg.endsWith('/') && fileArg.length > 1) {

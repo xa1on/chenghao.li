@@ -1,15 +1,19 @@
-import { audio } from '../../audio.js?v=3298f25b61';
+import { audio } from '../../audio.js';
 
 export const invaders = {
   name: 'invaders',
   description: 'Play a game of Space Invaders.',
   category: 'game',
   lazy: true,
+  options: [
+    { name: 'difficulty', flags: ['-d', '--difficulty'], type: 'string', choices: ['easy', 'medium', 'hard'], suggestions: ['easy', 'medium', 'hard'], description: 'Difficulty level (easy, medium, hard).' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
+  ],
   args: [
     { name: 'difficulty', description: 'Difficulty level (easy, medium, hard).', required: false, suggestions: ['easy', 'medium', 'hard'] }
   ],
-  run: async (args, shell) => {
-    let diffText = args.length > 0 ? args[0].toLowerCase() : '';
+  run: async (args, shell, flags = {}) => {
+    let diffText = (flags.difficulty || flags.d || args[0] || '').toLowerCase();
 
     const highscoreKey = 'invaders_highscore';
     let highscore = 0;

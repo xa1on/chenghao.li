@@ -1,16 +1,20 @@
-import { audio } from '../../audio.js?v=3298f25b61';
-import { HOME_PATH } from '../../config.js?v=2c3dbc7cd0';
+import { audio } from '../../audio.js';
+import { HOME_PATH } from '../../config.js';
 
 export const sokoban = {
   name: 'sokoban',
   description: 'Play a game of Sokoban.',
   category: 'game',
   lazy: true,
-  args: [
-    { name: 'level_path', description: 'Path to custom level file.', required: false }
+  options: [
+    { name: 'level', flags: ['-l', '--level'], type: 'string', suggestions: ['1', '2', '3'], description: 'Level number (1-3) or path to custom level file.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
-  run: async (args, shell) => {
-    let customPathStr = args.length > 0 ? args[0] : '';
+  args: [
+    { name: 'level_path', description: 'Path to custom level file or level number (1-3).', required: false }
+  ],
+  run: async (args, shell, flags = {}) => {
+    let customPathStr = String(flags.level ?? flags.l ?? args[0] ?? '').trim();
     let levelText = '';
     let isCustom = false;
     let currentLevelIndex = 1;

@@ -1,1 +1,1 @@
-export { sh } from './bash.js?v=587df8d704';
+export { sh } from './bash.js';

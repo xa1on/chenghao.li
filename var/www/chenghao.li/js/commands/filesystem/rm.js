@@ -3,33 +3,26 @@ export const rm = {
   description: 'Remove files or directories.',
   category: 'filesystem',
   options: [
-    { flags: ['-r', '-R', '--recursive'], description: 'Remove directories and their contents recursively.' },
-    { flags: ['-f', '--force'], description: 'Ignore nonexistent files and arguments, never prompt.' },
-    { flags: ['--help'], description: 'Display this help and exit.' }
+    { name: 'recursive', flags: ['-r', '-R', '--recursive'], type: 'boolean', description: 'Remove directories and their contents recursively.' },
+    { name: 'force', flags: ['-f', '--force'], type: 'boolean', description: 'Ignore nonexistent files and arguments, never prompt.' },
+    { name: 'help', flags: ['--help'], type: 'boolean', description: 'Display this help and exit.' }
   ],
   args: [
     { name: 'path', description: 'Path to the file or directory to remove.', required: true, variadic: true }
   ],
-  run: async (args, shell) => {
-    let recursive = false;
-    let force = false;
-    const paths = [];
+  run: async (args, shell, flags = {}) => {
+    const recursive = Boolean(flags.recursive || flags.r);
+    const force = Boolean(flags.force || flags.f);
 
-    for (const arg of args) {
-      if (arg.startsWith('-')) {
-        if (arg.includes('r') || arg.includes('R')) recursive = true;
-        if (arg.includes('f')) force = true;
-      } else {
-        paths.push(arg);
+    if (args.length === 0) {
+      if (!force) {
+        shell.print('rm: missing operand\nTry \'rm --help\' for more information.', 'color-error');
+        return 1;
       }
+      return 0;
     }
 
-    if (paths.length === 0) {
-      shell.print('rm: missing operand. Usage: rm [-rf] [path]', 'color-error');
-      return;
-    }
-
-    for (const pathArg of paths) {
+    for (const pathArg of args) {
       const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg, false);
 
       if (resolved === null) {
