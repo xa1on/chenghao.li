@@ -359,6 +359,11 @@ class AudioManager {
     this.playBeep(220, 330, 0.06, 'triangle', 0.15);
   }
 
+  // Terminal Bell sound (audible alert on ambiguous/invalid tab autocomplete)
+  playBell() {
+    this.playBeep(440, 440, 0.05, 'sine', 0.08);
+  }
+
   // Helper for quick pitch sweep playbacks
   playBeep(startFreq, endFreq, duration, type = 'sine', volume = 0.1) {
     if (!this.enabled) return;

@@ -1,6 +1,6 @@
-import { audio } from '../audio.js';
-import { escapeHTML } from '../utils/markdown.js';
-import { findCommentIndex, parseArgs } from './parser.js';
+import { audio } from '../audio.js?v=3298f25b61';
+import { escapeHTML } from '../utils/markdown.js?v=666e27d2b6';
+import { findCommentIndex, parseArgs } from './parser.js?v=2967fc0eb5';
 
 /**
  * GNU Readline Emacs-style interactive line editor.
@@ -14,8 +14,8 @@ export class LineEditor {
     this.inputDisplay = options.inputDisplay;
     this.promptPrefix = options.promptPrefix;
     this.placeholder = options.placeholder;
-    this.onSubmit = options.onSubmit || (() => {});
-    this.onTab = options.onTab || (() => {});
+    this.onSubmit = options.onSubmit || (() => { });
+    this.onTab = options.onTab || (() => { });
 
     this.killRing = '';
     this.searchMode = false;

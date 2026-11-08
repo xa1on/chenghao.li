@@ -1,7 +1,7 @@
-import { FileSystem } from './fs.js';
-import { Shell } from './shell.js';
-import { commands } from '../gen/commands.js';
-import { HOSTNAME, DEFAULT_USERNAME, HOME_PATH } from './config.js';
+import { FileSystem } from './fs.js?v=1b52fb889e';
+import { Shell } from './shell.js?v=40d69977e7';
+import { commands } from '../gen/commands.js?v=707992d823';
+import { HOSTNAME, DEFAULT_USERNAME, HOME_PATH } from './config.js?v=2c3dbc7cd0';
 
 // Instantiate FileSystem and Shell contexts
 const fileSystem = new FileSystem();

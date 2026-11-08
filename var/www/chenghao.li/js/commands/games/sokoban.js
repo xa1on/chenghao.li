@@ -1,5 +1,5 @@
-import { audio } from '../../audio.js';
-import { HOME_PATH } from '../../config.js';
+import { audio } from '../../audio.js?v=3298f25b61';
+import { HOME_PATH } from '../../config.js?v=2c3dbc7cd0';
 
 export const sokoban = {
   name: 'sokoban',

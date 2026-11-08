@@ -1,4 +1,4 @@
-import { TerminalPager, generateManLines } from './man.js';
+import { TerminalPager, generateManLines } from './man.js?v=62aaf6b24d';
 
 const INFO_DIR_LINES = [
   '<span class="color-dim">-*- Text -*-</span>',

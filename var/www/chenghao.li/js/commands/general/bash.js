@@ -1,4 +1,4 @@
-import { runScript } from '../../shell/script_runner.js';
+import { runScript } from '../../shell/script_runner.js?v=c35bdf10df';
 
 async function handleBash(args, shell, isSh = false) {
   if (args.length === 0) {
@@ -49,8 +49,12 @@ export const bash = {
   name: 'bash',
   description: 'GNU Bourne-Again SHell script interpreter.',
   category: 'general',
+  options: [
+    { flags: ['-c'], takesValue: true, suggestions: (sh) => Object.keys(sh.commands || {}), description: 'Read and execute commands from string.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'file', description: 'Script file or -c command string.', required: false }
+    { name: 'file', description: 'Script file or -c command string.', required: false, variadic: true }
   ],
   run: async (args, shell) => {
     return await handleBash(args, shell, false);
@@ -61,8 +65,12 @@ export const sh = {
   name: 'sh',
   description: 'POSIX shell script interpreter.',
   category: 'general',
+  options: [
+    { flags: ['-c'], takesValue: true, suggestions: (sh) => Object.keys(sh.commands || {}), description: 'Read and execute commands from string.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'file', description: 'Script file or -c command string.', required: false }
+    { name: 'file', description: 'Script file or -c command string.', required: false, variadic: true }
   ],
   run: async (args, shell) => {
     return await handleBash(args, shell, true);

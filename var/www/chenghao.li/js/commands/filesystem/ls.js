@@ -2,9 +2,14 @@ export const ls = {
   name: 'ls',
   description: 'List contents of a directory with flag support (-a, -l, -h).',
   category: 'filesystem',
+  options: [
+    { flags: ['-a', '--all'], description: 'Do not ignore entries starting with .' },
+    { flags: ['-l'], description: 'Use a long listing format.' },
+    { flags: ['-h', '--human-readable'], description: 'With -l, print human-readable sizes (e.g. 1K, 234M).' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'flags', description: 'Options: -a (all), -l (long listing), -h (human-readable).', required: false },
-    { name: 'path', description: 'Optional path to list contents of.', required: false }
+    { name: 'path', description: 'Optional path to list contents of.', required: false, variadic: true }
   ],
   run: async (args, shell) => {
     let showAll = false;
@@ -43,190 +48,204 @@ export const ls = {
       }
     }
 
-    let targetPath = shell.currentPath;
-    if (paths.length > 0) {
-      const pathArg = paths[0];
-      const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg);
-      if (resolved === null) {
-        shell.print(`ls: cannot access '${pathArg}': No such file or directory`, 'color-error');
-        return 1;
-      }
-      targetPath = resolved;
-    }
+    const targets = paths.length > 0 ? paths : [null];
+    let exitCode = 0;
 
-    const targetNode = shell.fileSystem.getNodeByPath(targetPath);
-    if (targetNode === null) {
-      shell.print('ls: file system error.', 'color-error');
-      return 1;
-    }
+    for (let idx = 0; idx < targets.length; idx++) {
+      const pathArg = targets[idx];
+      let targetPath = shell.currentPath;
 
-    // Single file target
-    if (typeof targetNode !== 'object') {
-      const absolutePath = '/' + targetPath.join('/');
-      const fileName = targetPath[targetPath.length - 1];
-      const isExe = shell.fileSystem.isExecutable(targetPath);
-      const fileClass = isExe ? 'color-green' : 'color-file';
-      if (longFormat) {
-        const perms = shell.fileSystem.formatModeString(targetPath);
-        const owner = shell.fileSystem.getOwner(targetPath);
-        const sizeStr = formatSize(estimateSize(targetNode), humanReadable);
-        const dateStr = getSimulatedDate();
-        shell.print(`${perms} 1 ${owner.user.padEnd(5)} ${owner.group.padEnd(5)} ${sizeStr.padStart(6)} ${dateStr} <span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
-      } else {
-        shell.print(`<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
-      }
-      return 0;
-    }
-
-    // Directory target
-    let items = Object.keys(targetNode);
-    if (!showAll) {
-      // Hide dotfiles
-      items = items.filter(name => !name.startsWith('.'));
-    }
-
-    items.sort((a, b) => a.localeCompare(b));
-
-    if (showAll) {
-      items.unshift('..');
-      items.unshift('.');
-    }
-
-    const targetPathStr = targetPath.join('/');
-
-    if (longFormat) {
-      let totalBlocks = 0;
-      const lines = [];
-
-      for (const name of items) {
-        let isDir = false;
-        let isLink = false;
-        let targetObj = null;
-        let linkTarget = null;
-        let size = 4096;
-        let perms = '-rw-r--r--';
-        let linkCount = 1;
-
-        if (name === '.') {
-          isDir = true;
-          perms = 'drwxr-xr-x';
-          linkCount = Object.keys(targetNode).length + 2;
-        } else if (name === '..') {
-          isDir = true;
-          perms = 'drwxr-xr-x';
-          linkCount = 2;
-        } else {
-          const itemNode = targetNode[name];
-          isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
-
-          if (isLink) {
-            perms = 'lrwxrwxrwx';
-            linkTarget = itemNode.symlink;
-            const resolvedTarget = shell.fileSystem.resolvePath(targetPath, itemNode.symlink);
-            if (resolvedTarget !== null) {
-              targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
-              isDir = targetObj !== null && typeof targetObj === 'object';
-            }
-          } else {
-            isDir = itemNode !== null && typeof itemNode === 'object';
-            perms = shell.fileSystem.formatModeString([...targetPath, name]);
-            if (isDir) {
-              linkCount = Object.keys(itemNode).length + 2;
-            } else {
-              size = estimateSize(itemNode);
-            }
-          }
+      if (pathArg !== null) {
+        const resolved = shell.fileSystem.resolvePath(shell.currentPath, pathArg);
+        if (resolved === null) {
+          shell.print(`ls: cannot access '${pathArg}': No such file or directory`, 'color-error');
+          exitCode = 1;
+          continue;
         }
-
-        totalBlocks += isDir ? 4 : Math.ceil(size / 1024) * 4;
-
-        let linkPath = '';
-        let itemOwnerPath = [...targetPath, name];
-        if (name === '.') {
-          linkPath = '/' + targetPathStr;
-          itemOwnerPath = targetPath;
-        } else if (name === '..') {
-          linkPath = '/' + targetPath.slice(0, -1).join('/');
-          itemOwnerPath = targetPath.slice(0, -1);
-        } else {
-          linkPath = '/' + (targetPathStr ? targetPathStr + '/' : '') + name;
-        }
-
-        let nameDisplay = '';
-        if (isLink) {
-          const resolved = shell.fileSystem.resolvePath(targetPath, linkTarget);
-          if (resolved === null) {
-            nameDisplay = `<span class="red ls-item" data-type="broken" data-path="${linkPath}">${name}</span> -> <span class="red">${linkTarget}</span>`;
-          } else {
-            nameDisplay = `<span class="cyan ls-item" data-type="${isDir ? 'dir' : 'file'}" data-path="${linkPath}">${name}</span> -> <span class="cyan">${linkTarget}</span>`;
-          }
-        } else if (isDir) {
-          nameDisplay = `<span class="color-dir ls-item" data-type="dir" data-path="${linkPath}">${name}/</span>`;
-        } else {
-          const isExe = shell.fileSystem.isExecutable([...targetPath, name]);
-          const fileClass = isExe ? 'color-green' : 'color-file';
-          nameDisplay = `<span class="${fileClass} ls-item" data-type="file" data-path="${linkPath}">${name}</span>`;
-        }
-
-        const sizeStr = formatSize(size, humanReadable).padStart(6);
-        const dateStr = getSimulatedDate();
-        const owner = shell.fileSystem.getOwner(itemOwnerPath);
-        const userStr = owner.user.padEnd(5);
-        const groupStr = owner.group.padEnd(5);
-        lines.push(`${perms} ${String(linkCount).padStart(2)} ${userStr} ${groupStr} ${sizeStr} ${dateStr} ${nameDisplay}`);
+        targetPath = resolved;
       }
 
-      shell.print(`total ${totalBlocks}`);
-      for (const line of lines) {
-        shell.print(line);
+      if (targets.length > 1) {
+        if (idx > 0) shell.print('');
+        shell.print(`${pathArg}:`);
       }
-    } else {
-      const formattedItems = items.map(name => {
-        let isDir = false;
-        let isLink = false;
-        let linkTarget = null;
 
-        if (name === '.') {
-          return `<span class="color-dir ls-item" data-type="dir" data-path="/${targetPathStr}">./</span>`;
-        }
-        if (name === '..') {
-          const parentPath = '/' + targetPath.slice(0, -1).join('/');
-          return `<span class="color-dir ls-item" data-type="dir" data-path="${parentPath}">../</span>`;
-        }
-
-        const itemNode = targetNode[name];
-        isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
-        const absolutePath = '/' + (targetPathStr ? targetPathStr + '/' : '') + name;
-
-        if (isLink) {
-          const resolvedTarget = shell.fileSystem.resolvePath(targetPath, itemNode.symlink);
-          if (resolvedTarget === null) {
-            return `<span class="red ls-item" data-type="broken" data-path="${absolutePath}">${name}@</span>`;
-          }
-          const targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
-          isDir = targetObj !== null && typeof targetObj === 'object';
-          return `<span class="cyan ls-item" data-type="${isDir ? 'dir' : 'file'}" data-path="${absolutePath}">${name}@</span>`;
-        }
-
-        isDir = itemNode !== null && typeof itemNode === 'object';
-        if (isDir) {
-          return `<span class="color-dir ls-item" data-type="dir" data-path="${absolutePath}">${name}/</span>`;
-        }
-        const isExe = shell.fileSystem.isExecutable([...targetPath, name]);
-        const fileClass = isExe ? 'color-green' : 'color-file';
-        return `<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${name}</span>`;
-      });
-
-      if (formattedItems.length === 0) {
-        shell.print('');
-      } else {
-        shell.print(formattedItems.join('   '));
-      }
+      const res = listTarget(targetPath, showAll, longFormat, humanReadable, shell);
+      if (res !== 0) exitCode = res;
     }
 
-    return 0;
+    return exitCode;
   }
 };
+
+function listTarget(targetPath, showAll, longFormat, humanReadable, shell) {
+  const targetNode = shell.fileSystem.getNodeByPath(targetPath);
+  if (targetNode === null) {
+    shell.print('ls: file system error.', 'color-error');
+    return 1;
+  }
+
+  // Single file target
+  if (typeof targetNode !== 'object') {
+    const absolutePath = '/' + targetPath.join('/');
+    const fileName = targetPath[targetPath.length - 1];
+    const isExe = shell.fileSystem.isExecutable(targetPath);
+    const fileClass = isExe ? 'color-green' : 'color-file';
+    if (longFormat) {
+      const perms = shell.fileSystem.formatModeString(targetPath);
+      const owner = shell.fileSystem.getOwner(targetPath);
+      const sizeStr = formatSize(estimateSize(targetNode), humanReadable);
+      const dateStr = getSimulatedDate();
+      shell.print(`${perms} 1 ${owner.user.padEnd(5)} ${owner.group.padEnd(5)} ${sizeStr.padStart(6)} ${dateStr} <span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
+    } else {
+      shell.print(`<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${fileName}</span>`);
+    }
+    return 0;
+  }
+
+  // Directory target
+  let items = Object.keys(targetNode);
+  if (!showAll) {
+    items = items.filter(name => !name.startsWith('.'));
+  }
+
+  items.sort((a, b) => a.localeCompare(b));
+
+  if (showAll) {
+    items.unshift('..');
+    items.unshift('.');
+  }
+
+  const targetPathStr = targetPath.join('/');
+
+  if (longFormat) {
+    let totalBlocks = 0;
+    const lines = [];
+
+    for (const name of items) {
+      let isDir = false;
+      let isLink = false;
+      let targetObj = null;
+      let linkTarget = null;
+      let size = 4096;
+      let perms = '-rw-r--r--';
+      let linkCount = 1;
+
+      if (name === '.') {
+        isDir = true;
+        perms = 'drwxr-xr-x';
+        linkCount = Object.keys(targetNode).length + 2;
+      } else if (name === '..') {
+        isDir = true;
+        perms = 'drwxr-xr-x';
+        linkCount = 2;
+      } else {
+        const itemNode = targetNode[name];
+        isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
+
+        if (isLink) {
+          perms = 'lrwxrwxrwx';
+          linkTarget = itemNode.symlink;
+          const resolvedTarget = shell.fileSystem.resolvePath(targetPath, itemNode.symlink);
+          if (resolvedTarget !== null) {
+            targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
+            isDir = targetObj !== null && typeof targetObj === 'object';
+          }
+        } else {
+          isDir = itemNode !== null && typeof itemNode === 'object';
+          perms = shell.fileSystem.formatModeString([...targetPath, name]);
+          if (isDir) {
+            linkCount = Object.keys(itemNode).length + 2;
+          } else {
+            size = estimateSize(itemNode);
+          }
+        }
+      }
+
+      totalBlocks += isDir ? 4 : Math.ceil(size / 1024) * 4;
+
+      let linkPath = '';
+      let itemOwnerPath = [...targetPath, name];
+      if (name === '.') {
+        linkPath = '/' + targetPathStr;
+        itemOwnerPath = targetPath;
+      } else if (name === '..') {
+        linkPath = '/' + targetPath.slice(0, -1).join('/');
+        itemOwnerPath = targetPath.slice(0, -1);
+      } else {
+        linkPath = '/' + (targetPathStr ? targetPathStr + '/' : '') + name;
+      }
+
+      let nameDisplay = '';
+      if (isLink) {
+        const resolved = shell.fileSystem.resolvePath(targetPath, linkTarget);
+        if (resolved === null) {
+          nameDisplay = `<span class="red ls-item" data-type="broken" data-path="${linkPath}">${name}</span> -> <span class="red">${linkTarget}</span>`;
+        } else {
+          nameDisplay = `<span class="cyan ls-item" data-type="${isDir ? 'dir' : 'file'}" data-path="${linkPath}">${name}</span> -> <span class="cyan">${linkTarget}</span>`;
+        }
+      } else if (isDir) {
+        nameDisplay = `<span class="color-dir ls-item" data-type="dir" data-path="${linkPath}">${name}/</span>`;
+      } else {
+        const isExe = shell.fileSystem.isExecutable([...targetPath, name]);
+        const fileClass = isExe ? 'color-green' : 'color-file';
+        nameDisplay = `<span class="${fileClass} ls-item" data-type="file" data-path="${linkPath}">${name}</span>`;
+      }
+
+      const sizeStr = formatSize(size, humanReadable).padStart(6);
+      const dateStr = getSimulatedDate();
+      const owner = shell.fileSystem.getOwner(itemOwnerPath);
+      const userStr = owner.user.padEnd(5);
+      const groupStr = owner.group.padEnd(5);
+      lines.push(`${perms} ${String(linkCount).padStart(2)} ${userStr} ${groupStr} ${sizeStr} ${dateStr} ${nameDisplay}`);
+    }
+
+    shell.print(`total ${totalBlocks}`);
+    for (const line of lines) {
+      shell.print(line);
+    }
+  } else {
+    const formattedItems = items.map(name => {
+      if (name === '.') {
+        return `<span class="color-dir ls-item" data-type="dir" data-path="/${targetPathStr}">./</span>`;
+      }
+      if (name === '..') {
+        const parentPath = '/' + targetPath.slice(0, -1).join('/');
+        return `<span class="color-dir ls-item" data-type="dir" data-path="${parentPath}">../</span>`;
+      }
+
+      const itemNode = targetNode[name];
+      const isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
+      const absolutePath = '/' + (targetPathStr ? targetPathStr + '/' : '') + name;
+
+      if (isLink) {
+        const resolvedTarget = shell.fileSystem.resolvePath(targetPath, itemNode.symlink);
+        if (resolvedTarget === null) {
+          return `<span class="red ls-item" data-type="broken" data-path="${absolutePath}">${name}@</span>`;
+        }
+        const targetObj = shell.fileSystem.getNodeByPath(resolvedTarget);
+        const isDir = targetObj !== null && typeof targetObj === 'object';
+        return `<span class="cyan ls-item" data-type="${isDir ? 'dir' : 'file'}" data-path="${absolutePath}">${name}@</span>`;
+      }
+
+      const isDir = itemNode !== null && typeof itemNode === 'object';
+      if (isDir) {
+        return `<span class="color-dir ls-item" data-type="dir" data-path="${absolutePath}">${name}/</span>`;
+      }
+      const isExe = shell.fileSystem.isExecutable([...targetPath, name]);
+      const fileClass = isExe ? 'color-green' : 'color-file';
+      return `<span class="${fileClass} ls-item" data-type="file" data-path="${absolutePath}">${name}</span>`;
+    });
+
+    if (formattedItems.length === 0) {
+      shell.print('');
+    } else {
+      shell.print(formattedItems.join('   '));
+    }
+  }
+
+  return 0;
+}
 
 function estimateSize(node) {
   if (typeof node === 'string') {

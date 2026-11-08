@@ -15,6 +15,7 @@ export const BOOT_SSH_COMMAND = `ssh ${DEFAULT_USERNAME}@${HOSTNAME}`;
 export const MAX_TERMINAL_OUTPUT_LINES = 150;
 export const TYPEWRITER_DEFAULT_DELAY = 50;
 export const MARKDOWN_WRAP_LIMIT = 120;
+export const TAB_DOUBLE_PRESS_INTERVAL = 500;
 
 // 3. Build & Virtual File System Paths
 export const GEN_DIR = `${WEB_ROOT}/gen`;

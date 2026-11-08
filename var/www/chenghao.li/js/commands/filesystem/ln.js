@@ -2,20 +2,24 @@ export const ln = {
   name: 'ln',
   description: 'Create a symbolic link to a file or directory.',
   category: 'filesystem',
+  options: [
+    { flags: ['-s', '--symbolic'], description: 'Make symbolic links instead of hard links.' },
+    { flags: ['-f', '--force'], description: 'Remove existing destination files.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'flags', description: 'Options: -s for symbolic link.', required: false },
     { name: 'target', description: 'Target file or directory to link to.', required: true },
     { name: 'link_name', description: 'Name of the symlink to create.', required: false }
   ],
   run: async (args, shell) => {
     const nonFlags = [];
     let isSymbolic = false;
+    let force = false;
 
     for (const arg of args) {
       if (arg.startsWith('-')) {
-        if (arg.includes('s')) {
-          isSymbolic = true;
-        }
+        if (arg.includes('s')) isSymbolic = true;
+        if (arg.includes('f') || arg === '--force') force = true;
       } else {
         nonFlags.push(arg);
       }
@@ -44,6 +48,12 @@ export const ln = {
 
     const { resolvedParent, name } = resolved;
     const destPath = [...resolvedParent, name];
+
+    if (force) {
+      try {
+        shell.fileSystem.deleteNode(destPath);
+      } catch (_) { }
+    }
 
     try {
       shell.fileSystem.createSymlink(destPath, targetArg);

@@ -343,9 +343,24 @@ export function generateManLines(cmd, shell, width = 80) {
   let synopsisText = `${name}`;
   if (man.synopsis) {
     synopsisText = man.synopsis;
-  } else if (cmd.args && cmd.args.length > 0) {
-    const argStrs = cmd.args.map(a => a.required ? `&lt;${a.name}&gt;` : `[${a.name}]`);
-    synopsisText += ' ' + argStrs.join(' ');
+  } else {
+    const hasOptions = (man.options && man.options.length > 0) ||
+      (cmd.options && cmd.options.length > 0) ||
+      (cmd.flags && cmd.flags.length > 0);
+    if (hasOptions) {
+      synopsisText += ' [OPTIONS]';
+    }
+    if (cmd.args && cmd.args.length > 0) {
+      const argStrs = cmd.args
+        .filter(a => a.name !== 'flags' && !a.name.startsWith('-'))
+        .map(a => {
+          const base = a.required ? `&lt;${a.name}&gt;` : `[${a.name}]`;
+          return a.variadic ? `${base}...` : base;
+        });
+      if (argStrs.length > 0) {
+        synopsisText += ' ' + argStrs.join(' ');
+      }
+    }
   }
   addSection('SYNOPSIS', [
     `       <span class="color-accent">${synopsisText}</span>`
@@ -359,26 +374,39 @@ export function generateManLines(cmd, shell, width = 80) {
     addSection('DESCRIPTION', descLines);
   }
 
-  // OPTIONS / ARGUMENTS
-  if (man.options && man.options.length > 0) {
+  // OPTIONS
+  const optionsList = (cmd.options && cmd.options.length > 0) ? cmd.options :
+    (man.options && man.options.length > 0) ? man.options : [];
+  if (optionsList.length > 0) {
     const optLines = [];
-    for (const opt of man.options) {
-      optLines.push(`       <span class="color-green">${opt.flags || opt.name}</span>`);
-      optLines.push(`              ${opt.desc || opt.description}`);
+    for (const opt of optionsList) {
+      const flagText = opt.flags ? (Array.isArray(opt.flags) ? opt.flags.join(', ') : opt.flags) : (opt.flag || opt.name || '');
+      optLines.push(`       <span class="color-green">${flagText}</span>`);
+      if (opt.desc || opt.description) {
+        optLines.push(`              ${opt.desc || opt.description}`);
+      }
       optLines.push('');
     }
     if (optLines.length > 0 && optLines[optLines.length - 1] === '') optLines.pop();
     addSection('OPTIONS', optLines);
-  } else if (cmd.args && cmd.args.length > 0) {
-    const argLines = [];
-    for (const arg of cmd.args) {
-      const label = arg.required ? `&lt;${arg.name}&gt; (required)` : `[${arg.name}] (optional)`;
-      argLines.push(`       <span class="color-green">${label}</span>`);
-      argLines.push(`              ${arg.description}`);
-      argLines.push('');
+  }
+
+  // ARGUMENTS
+  if (cmd.args && cmd.args.length > 0) {
+    const positionalArgs = cmd.args.filter(a => a.name !== 'flags' && !a.name.startsWith('-'));
+    if (positionalArgs.length > 0) {
+      const argLines = [];
+      for (const arg of positionalArgs) {
+        const label = arg.required ? `&lt;${arg.name}&gt; (required)` : `[${arg.name}] (optional)`;
+        argLines.push(`       <span class="color-green">${label}</span>`);
+        if (arg.description) {
+          argLines.push(`              ${arg.description}`);
+        }
+        argLines.push('');
+      }
+      if (argLines.length > 0 && argLines[argLines.length - 1] === '') argLines.pop();
+      addSection('ARGUMENTS', argLines);
     }
-    if (argLines.length > 0 && argLines[argLines.length - 1] === '') argLines.pop();
-    addSection('ARGUMENTS', argLines);
   }
 
   // EXAMPLES
@@ -447,8 +475,12 @@ export const man = {
   name: 'man',
   description: 'An interface to the system reference manuals.',
   category: 'general',
+  options: [
+    { flags: ['-k', '--apropos'], takesValue: true, suggestions: (sh) => Object.keys(sh.commands || {}), description: 'Search manual page names and descriptions for matching keywords.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'command', description: 'The command name to view manual for, or -k <keyword> to search.', required: false }
+    { name: 'command', description: 'The command name to view manual for, or -k <keyword> to search.', required: false, suggestions: (sh) => Object.keys(sh.commands || {}) }
   ],
   man: {
     description: 'man is the system manual pager. Each page argument given to man is normally the name of a program, utility or function.',

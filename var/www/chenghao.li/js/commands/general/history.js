@@ -2,9 +2,11 @@ export const history = {
   name: 'history',
   description: 'Display command history list or clear it.',
   category: 'general',
-  args: [
-    { name: '-c', description: 'Clear the command history list.', required: false }
+  options: [
+    { flags: ['-c'], description: 'Clear the command history list.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
   ],
+  args: [],
   run: async (args, shell) => {
     if (args.length > 0 && args[0] === '-c') {
       shell.commandHistory = [];

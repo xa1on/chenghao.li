@@ -1,5 +1,5 @@
-import { virtualFS } from '../gen/fs_manifest.js';
-import { DEFAULT_USERNAME, HOME_PATH, VFS_INDEX_PATH } from './config.js';
+import { virtualFS } from '../gen/fs_manifest.js?v=b0fce29c0f';
+import { DEFAULT_USERNAME, HOME_PATH, VFS_INDEX_PATH } from './config.js?v=2c3dbc7cd0';
 export { virtualFS };
 
 function deepMerge(target, source) {

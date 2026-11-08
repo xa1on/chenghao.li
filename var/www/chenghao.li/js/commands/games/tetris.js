@@ -1,14 +1,16 @@
-import { audio } from '../../audio.js';
+import { audio } from '../../audio.js?v=3298f25b61';
 
 export const tetris = {
   name: 'tetris',
   description: 'Play a game of Tetris.',
   category: 'game',
   lazy: true,
-  args: [
-    { name: '--cols, -c', description: 'Number of columns (default: 10, min: 4, max: 50).', required: false },
-    { name: '--rows, -r', description: 'Number of rows (default: 20, min: 20, max: 60).', required: false }
+  options: [
+    { flags: ['-c', '--cols', '-w', '--width'], takesValue: true, suggestions: ['10', '12', '16', '20'], description: 'Number of columns (default: 10, min: 4, max: 50).' },
+    { flags: ['-r', '--rows', '-h', '--height'], takesValue: true, suggestions: ['20', '24', '30'], description: 'Number of rows (default: 20, min: 20, max: 60).' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
   ],
+  args: [],
   run: async (args, shell) => {
     let COLS = 10;
     let ROWS = 20;

@@ -2,9 +2,13 @@ export const chmod = {
   name: 'chmod',
   description: 'Change file mode bits (permissions).',
   category: 'filesystem',
+  options: [
+    { flags: ['-R', '--recursive'], description: 'Change files and directories recursively.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'mode', description: 'Mode specification (e.g. +x, -x, 755, 644).', required: true },
-    { name: 'file', description: 'File or directory to modify.', required: true }
+    { name: 'mode', description: 'Mode specification (e.g. +x, -x, 755, 644).', required: true, suggestions: ['+x', '-x', '755', '644', '600', '777'] },
+    { name: 'file', description: 'File or directory to modify.', required: true, variadic: true }
   ],
   run: async (args, shell) => {
     if (args.length < 2) {

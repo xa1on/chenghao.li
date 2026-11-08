@@ -188,8 +188,14 @@ export const help = {
   name: 'help',
   description: 'Display information about builtin commands.',
   category: 'general',
+  options: [
+    { flags: ['-d'], description: 'Output short description for each topic.' },
+    { flags: ['-m'], description: 'Display usage in pseudo-manpage format.' },
+    { flags: ['-s'], description: 'Output only a short usage synopsis for each topic matching PATTERN.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'pattern', description: 'Pattern or name of builtin command.', required: false }
+    { name: 'pattern', description: 'Pattern or name of builtin command.', required: false, suggestions: () => Object.keys(BASH_BUILTINS) }
   ],
   run: async (args, shell) => {
     let mode = 'normal'; // 'normal', 'synopsis' (-s), 'description' (-d)

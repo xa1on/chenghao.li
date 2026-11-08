@@ -2,9 +2,13 @@ export const rm = {
   name: 'rm',
   description: 'Remove files or directories.',
   category: 'filesystem',
+  options: [
+    { flags: ['-r', '-R', '--recursive'], description: 'Remove directories and their contents recursively.' },
+    { flags: ['-f', '--force'], description: 'Ignore nonexistent files and arguments, never prompt.' },
+    { flags: ['--help'], description: 'Display this help and exit.' }
+  ],
   args: [
-    { name: 'flags', description: 'Options: -rf for recursive force deletion.', required: false },
-    { name: 'path', description: 'Path to the file or directory to remove.', required: true }
+    { name: 'path', description: 'Path to the file or directory to remove.', required: true, variadic: true }
   ],
   run: async (args, shell) => {
     let recursive = false;
@@ -13,7 +17,7 @@ export const rm = {
 
     for (const arg of args) {
       if (arg.startsWith('-')) {
-        if (arg.includes('r')) recursive = true;
+        if (arg.includes('r') || arg.includes('R')) recursive = true;
         if (arg.includes('f')) force = true;
       } else {
         paths.push(arg);

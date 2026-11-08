@@ -1,5 +1,5 @@
-import { audio } from '../audio.js';
-import { parseMarkdown, escapeHTML } from '../utils/markdown.js';
+import { audio } from '../audio.js?v=3298f25b61';
+import { parseMarkdown, escapeHTML } from '../utils/markdown.js?v=666e27d2b6';
 import {
   HOSTNAME,
   DEFAULT_USERNAME,
@@ -8,17 +8,19 @@ import {
   PROMPT_SYMBOL,
   MAX_TERMINAL_OUTPUT_LINES,
   TYPEWRITER_DEFAULT_DELAY,
-  MARKDOWN_WRAP_LIMIT
-} from '../config.js';
+  MARKDOWN_WRAP_LIMIT,
+  TAB_DOUBLE_PRESS_INTERVAL
+} from '../config.js?v=2c3dbc7cd0';
 import {
   findCommentIndex,
   parseArgs,
   expandVariables,
   splitCommandChainsWithOps,
   parseRedirection
-} from './parser.js';
-import { runScript } from './script_runner.js';
-import { LineEditor } from './line_editor.js';
+} from './parser.js?v=2967fc0eb5';
+import { runScript } from './script_runner.js?v=c35bdf10df';
+import { LineEditor } from './line_editor.js?v=d1d74b2438';
+import { getCompletions } from './completer.js?v=e7bbebcc5b';
 
 export class Shell {
   constructor(options = {}) {
@@ -87,6 +89,10 @@ export class Shell {
         this.handleTabAutocomplete();
       }
     });
+
+    this.lastTabTimestamp = 0;
+    this.tabCount = 0;
+    this.lastTabInput = '';
   }
 
   getEnv() {
@@ -220,6 +226,9 @@ export class Shell {
     // Interactive Keydown Dispatcher
     if (this.input) {
       this.input.addEventListener('keydown', async (e) => {
+        if (e.key !== 'Tab') {
+          this.tabCount = 0;
+        }
         const activeHandler = this.getActiveInputHandler();
         if (activeHandler) {
           activeHandler(e);
@@ -278,7 +287,7 @@ export class Shell {
             this.setInputValue(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
             this.focus();
           }
-        } catch (_) {}
+        } catch (_) { }
       }
     });
 
@@ -300,7 +309,7 @@ export class Shell {
             this.setInputValue(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
             this.focus();
           }
-        } catch (_) {}
+        } catch (_) { }
       }
     });
 
@@ -466,6 +475,10 @@ export class Shell {
   printError(msg) {
     this.lastExitCode = 1;
     return this.print(msg, 'color-error');
+  }
+
+  playTerminalBell() {
+    audio?.playBell?.();
   }
 
   readInput(promptText) {
@@ -751,7 +764,10 @@ export class Shell {
         }
 
         // Intercept -h or --help
-        if (args.length === 1 && (args[0] === '-h' || args[0] === '--help')) {
+        const wantsHelp = args.includes('--help') || (args.includes('-h') && (
+          !cmd.options || cmd.options.some(o => Array.isArray(o.flags) ? o.flags.includes('-h') : o.flag === '-h')
+        ));
+        if (wantsHelp) {
           this.printCommandHelp(cmd);
           return 0;
         }
@@ -802,7 +818,7 @@ export class Shell {
             try {
               const existing = await this.fileSystem.readFile(targetPath);
               finalContent = (existing ? existing + '\n' : '') + captured;
-            } catch (_) {}
+            } catch (_) { }
           }
           try {
             this.fileSystem.writeFile(targetPath, finalContent);
@@ -820,17 +836,36 @@ export class Shell {
 
   printCommandHelp(cmd) {
     let usage = cmd.name;
-    if (cmd.args && cmd.args.length > 0) {
-      const argUsageStrings = cmd.args.map(a => a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`);
+    const optionsList = (cmd.options && cmd.options.length > 0) ? cmd.options :
+      (cmd.man?.options && cmd.man.options.length > 0) ? cmd.man.options : [];
+    if (optionsList.length > 0) {
+      usage += ' [OPTIONS]';
+    }
+    const positionalArgs = (cmd.args || []).filter(a => a.name !== 'flags' && !a.name.startsWith('-'));
+    if (positionalArgs.length > 0) {
+      const argUsageStrings = positionalArgs.map(a => {
+        const base = a.required ? `&lt;${escapeHTML(a.name)}&gt;` : `[${escapeHTML(a.name)}]`;
+        return a.variadic ? `${base}...` : base;
+      });
       usage += ' ' + argUsageStrings.join(' ');
     }
     let helpText = `<span class="blue" style="font-weight: bold;">Usage:</span> <span class="color-green">${usage}</span>\n`;
     if (cmd.description) {
       helpText += `<span class="blue" style="font-weight: bold;">Description:</span> ${escapeHTML(cmd.description)}\n`;
     }
-    if (cmd.args && cmd.args.length > 0) {
+    if (optionsList.length > 0) {
+      helpText += `\n<span class="blue" style="font-weight: bold;">Options:</span>`;
+      for (const opt of optionsList) {
+        const flagName = opt.flags ? (Array.isArray(opt.flags) ? opt.flags.join(', ') : opt.flags) : (opt.flag || opt.name || '');
+        const rawFlag = flagName;
+        const paddedFlag = rawFlag.padEnd(20);
+        const styledFlag = paddedFlag.replace(rawFlag, `<span class="color-accent">${escapeHTML(rawFlag)}</span>`);
+        helpText += `\n  ${styledFlag} ${escapeHTML(opt.description || opt.desc || '')}`;
+      }
+    }
+    if (positionalArgs.length > 0) {
       helpText += `\n<span class="blue" style="font-weight: bold;">Arguments:</span>`;
-      for (const arg of cmd.args) {
+      for (const arg of positionalArgs) {
         const rawArgName = arg.required ? `<${arg.name}>` : `[${arg.name}]`;
         const escapedArgName = arg.required ? `&lt;${escapeHTML(arg.name)}&gt;` : `[${escapeHTML(arg.name)}]`;
         const paddedArgName = rawArgName.padEnd(16);
@@ -841,7 +876,7 @@ export class Shell {
         const paddedReqText = reqText.padEnd(12);
         const styledReqText = paddedReqText.replace(reqText, reqSpan);
 
-        helpText += `\n  ${styledArgName} ${styledReqText} ${escapeHTML(arg.description)}`;
+        helpText += `\n  ${styledArgName} ${styledReqText} ${escapeHTML(arg.description || '')}`;
       }
     }
     helpText += `\n\n<span class="color-dim">For full manual page, try '</span><span class="blue cmd-link" data-cmd="man ${cmd.name}">man ${cmd.name}</span><span class="color-dim">'.</span>`;
@@ -850,133 +885,51 @@ export class Shell {
 
   handleTabAutocomplete() {
     const currentVal = this.input.value;
-    const trimmed = currentVal.trimStart();
-    if (trimmed === '') return;
+    if (currentVal.trimStart() === '') return;
 
-    const parts = currentVal.split(/\s+/);
-    const isCommandOnly = parts.length === 1;
+    const cursorPos = this.lineEditor.getCursorPos();
+    const result = getCompletions({
+      input: currentVal,
+      cursorPos,
+      shell: this
+    });
 
-    const getLongestCommonPrefix = (words) => {
-      if (words.length === 0) return '';
-      let prefix = words[0];
-      for (let i = 1; i < words.length; i++) {
-        while (words[i].toLowerCase().indexOf(prefix.toLowerCase()) !== 0) {
-          prefix = prefix.substring(0, prefix.length - 1);
-          if (prefix === '') return '';
-        }
-      }
-      return prefix;
-    };
+    if (!result || !result.matches || result.matches.length === 0) {
+      this.playTerminalBell();
+      this.tabCount = 0;
+      return;
+    }
 
-    if (isCommandOnly) {
-      const typedCmd = parts[0].toLowerCase();
-      const availableCmds = Object.keys(this.commands);
-      const matches = availableCmds.filter(cmd => cmd.startsWith(typedCmd));
+    // 1. Single match: apply immediately
+    if (result.matches.length === 1 && result.replacement !== null) {
+      this.setInputValue(result.replacement, result.newCursorPos);
+      this.tabCount = 0;
+      return;
+    }
 
-      if (matches.length === 1) {
-        this.setInputValue(matches[0] + ' ');
-      } else if (matches.length > 1) {
-        const lcp = getLongestCommonPrefix(matches);
-        if (lcp.length > typedCmd.length) {
-          this.setInputValue(lcp);
-        } else {
-          this.print(matches.join('    '), 'color-accent');
-        }
-      }
+    // 2. Multiple matches: check if LCP can be extended
+    const now = Date.now();
+    const isConsecutive = (now - this.lastTabTimestamp < TAB_DOUBLE_PRESS_INTERVAL) && (this.lastTabInput === currentVal);
+    this.lastTabTimestamp = now;
+    this.lastTabInput = currentVal;
+
+    if (result.lcp && result.lcp.length > result.currentToken.length) {
+      this.setInputValue(result.lcpReplacement, result.newLcpCursorPos);
+      this.lastTabInput = result.lcpReplacement;
+      this.tabCount = 1;
+      return;
+    }
+
+    // 3. Already at LCP:
+    // 1st Tab: ring subtle terminal bell
+    // 2nd Tab: echo prompt in scrollback and display candidates
+    if (isConsecutive && this.tabCount >= 1) {
+      this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
+      this.print(result.formattedMatches.join('    '));
+      this.tabCount = 0;
     } else {
-      const command = parts[0].toLowerCase();
-      const cmd = this.commands[command];
-      const argIdx = parts.length - 2;
-      const argMetadata = (cmd && cmd.args) ? cmd.args[argIdx] : null;
-
-      if (argMetadata && argMetadata.suggestions && argMetadata.suggestions.length > 0) {
-        const typedArg = parts[parts.length - 1].toLowerCase();
-        const suggestions = argMetadata.suggestions;
-        const matches = suggestions.filter(s => s.startsWith(typedArg));
-
-        if (matches.length === 1) {
-          parts[parts.length - 1] = matches[0] + ' ';
-          this.setInputValue(parts.join(' '));
-        } else if (matches.length > 1) {
-          const lcp = getLongestCommonPrefix(matches);
-          if (lcp.length > typedArg.length) {
-            parts[parts.length - 1] = lcp;
-            this.setInputValue(parts.join(' '));
-          } else {
-            this.print(matches.join('    '), 'color-accent');
-          }
-        }
-        return;
-      }
-
-      const argVal = parts[parts.length - 1];
-      const slashIdx = argVal.lastIndexOf('/');
-      let targetPath = [...this.currentPath];
-      let prefix = argVal;
-
-      if (slashIdx !== -1) {
-        let pathPrefix = argVal.slice(0, slashIdx);
-        if (pathPrefix === '' && argVal.startsWith('/')) {
-          pathPrefix = '/';
-        }
-        prefix = argVal.slice(slashIdx + 1);
-
-        const resolvedPrefixPath = this.fileSystem.resolvePath(this.currentPath, pathPrefix);
-        if (resolvedPrefixPath === null) {
-          return;
-        }
-        targetPath = resolvedPrefixPath;
-      }
-
-      const targetDir = this.fileSystem.getNodeByPath(targetPath);
-      if (!targetDir || typeof targetDir !== 'object') return;
-
-      const dirKeys = Object.keys(targetDir);
-      // Linux bash parity: Only suggest '..' if the user explicitly typed '.' or '..'
-      if (prefix.startsWith('.')) {
-        if (targetPath.length > 0) {
-          dirKeys.push('..');
-        }
-        dirKeys.push('.');
-      }
-
-      const prefixLower = prefix.toLowerCase();
-      const matches = dirKeys.filter(key => key.toLowerCase().startsWith(prefixLower));
-
-      if (matches.length === 1) {
-        const matchedName = matches[0];
-        const itemNode = targetDir[matchedName];
-        const isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
-        let isDirNode = matchedName === '..' || matchedName === '.' || typeof targetDir[matchedName] === 'object';
-        if (isLink) {
-          const resolved = this.fileSystem.resolvePath(targetPath, itemNode.symlink);
-          isDirNode = resolved !== null && typeof this.fileSystem.getNodeByPath(resolved) === 'object';
-        }
-        const completedArg = (slashIdx !== -1 ? argVal.slice(0, slashIdx + 1) : '') + matchedName + (isDirNode ? '/' : ' ');
-
-        parts[parts.length - 1] = completedArg;
-        this.setInputValue(parts.join(' '));
-      } else if (matches.length > 1) {
-        const lcp = getLongestCommonPrefix(matches);
-        if (lcp.length > prefix.length) {
-          const completedPrefix = (slashIdx !== -1 ? argVal.slice(0, slashIdx + 1) : '') + lcp;
-          parts[parts.length - 1] = completedPrefix;
-          this.setInputValue(parts.join(' '));
-        } else {
-          const formattedMatches = matches.map(matchedName => {
-            const itemNode = targetDir[matchedName];
-            const isLink = itemNode !== null && typeof itemNode === 'object' && typeof itemNode.symlink === 'string';
-            if (isLink) {
-              const resolved = this.fileSystem.resolvePath(targetPath, itemNode.symlink);
-              const isDir = resolved !== null && typeof this.fileSystem.getNodeByPath(resolved) === 'object';
-              return `<span class="cyan">${matchedName}@</span>`;
-            }
-            const isDirNode = matchedName === '..' || matchedName === '.' || typeof targetDir[matchedName] === 'object';
-            return isDirNode ? `<span class="color-dir">${matchedName}/</span>` : `<span class="color-file">${matchedName}</span>`;
-          });
-          this.print(formattedMatches.join('    '));
-        }
-      }
+      this.playTerminalBell();
+      this.tabCount = 1;
     }
   }
 

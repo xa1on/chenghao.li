@@ -38,6 +38,7 @@ const CYCLIC_PATHS = new Set([
   'var/www/chenghao.li/js/shell.js',
   'var/www/chenghao.li/js/shell/parser.js',
   'var/www/chenghao.li/js/shell/line_editor.js',
+  'var/www/chenghao.li/js/shell/completer.js',
   'var/www/chenghao.li/js/shell/shell_core.js',
   COMMANDS_INDEX_PATH,
   'var/www/chenghao.li/js/utils/markdown.js',
@@ -174,6 +175,7 @@ async function generateCommandsIndexContent() {
             description: cmd.description || '',
             category: cleanCategory,
             args: cmd.args || [],
+            options: cmd.options || [],
             importPath: `../js/commands/${category}/${file}`
           });
         } else {
@@ -199,11 +201,15 @@ ${eagerCommands.map(name => `  ${name},`).join('\n')}
 
   // Format lazy commands
   const formattedLazy = lazyCommands.map(cmd => {
+    let extra = '';
+    if (cmd.options && cmd.options.length > 0) {
+      extra += `,\n    options: ${JSON.stringify(cmd.options, null, 4).replace(/\n/g, '\n    ')}`;
+    }
     return `  ${cmd.name}: {
     name: '${cmd.name}',
     description: ${JSON.stringify(cmd.description)},
     category: '${cmd.category}',
-    args: ${JSON.stringify(cmd.args, null, 4).replace(/\n/g, '\n    ')},
+    args: ${JSON.stringify(cmd.args, null, 4).replace(/\n/g, '\n    ')}${extra},
     lazy: true,
     import: () => import('${cmd.importPath}')
   }`;

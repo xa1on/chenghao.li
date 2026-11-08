@@ -1,5 +1,5 @@
-import { buddies as buddiesList } from '../../../gen/buddies.js';
-import { WEB_ROOT } from '../../config.js';
+import { buddies as buddiesList } from '../../../gen/buddies.js?v=72a3cbbf99';
+import { WEB_ROOT } from '../../config.js?v=2c3dbc7cd0';
 
 export const buddies = {
   name: 'buddies',

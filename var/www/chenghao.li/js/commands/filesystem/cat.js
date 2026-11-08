@@ -3,7 +3,7 @@ export const cat = {
   description: 'Display the contents of one or more text files, or render colored ASCII art.',
   category: 'filesystem',
   args: [
-    { name: 'filename', description: 'The text file to display, or .art file to render.', required: true }
+    { name: 'filename', description: 'The text file to display, or .art file to render.', required: true, variadic: true }
   ],
   run: async (args, shell) => {
     if (args.length === 0) {

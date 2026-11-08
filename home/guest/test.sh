@@ -28,7 +28,7 @@ else
 fi
 
 if [ -d "blogs" ]; then
-  echo "✓ 'blogs' directory detected."
+  echo "'blogs' directory found!"
 fi
 
 echo ""
