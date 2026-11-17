@@ -83,8 +83,8 @@ export class Shell {
       inputDisplay: this.inputDisplay,
       promptPrefix: this.promptPrefix,
       placeholder: this.placeholder,
-      onSubmit: async (val) => {
-        await this.handleInputSubmit(val);
+      onSubmit: async () => {
+        return await this.submit();
       },
       onTab: () => {
         this.handleTabAutocomplete();
@@ -117,8 +117,12 @@ export class Shell {
     return this.inputHandlers.length > 0 ? this.inputHandlers[this.inputHandlers.length - 1] : null;
   }
 
-  setInputValue(newVal, newCursorPos = null) {
-    this.lineEditor.setInputValue(newVal, newCursorPos);
+  setInput(newVal, newCursorPos = null) {
+    this.lineEditor.setInput(newVal, newCursorPos);
+  }
+
+  getInputValue() {
+    return this.lineEditor ? this.lineEditor.getValue() : (this.input ? this.input.value : '');
   }
 
   updateInputDisplay(text) {
@@ -267,7 +271,7 @@ export class Shell {
         if (this.loginState === 'LOGGED_IN' && !this.isBooting && this.input && !this.input.disabled) {
           const currentVal = this.input.value;
           this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}^C`);
-          this.setInputValue('', 0);
+          this.setInput('', 0);
           this.updatePrompt();
           this.focus();
         }
@@ -285,7 +289,7 @@ export class Shell {
           if (text && this.input) {
             const pos = this.input.selectionStart || 0;
             const val = this.input.value;
-            this.setInputValue(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
+            this.setInput(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
             this.focus();
           }
         } catch (_) { }
@@ -307,7 +311,7 @@ export class Shell {
           if (text && this.input) {
             const pos = this.input.selectionStart || 0;
             const val = this.input.value;
-            this.setInputValue(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
+            this.setInput(val.slice(0, pos) + text + val.slice(pos), pos + text.length);
             this.focus();
           }
         } catch (_) { }
@@ -551,8 +555,33 @@ export class Shell {
     }
   }
 
+  async submit() {
+    if (this.isExecutingCommand) return 0;
+
+    const val = this.getInputValue();
+    this.setInput('', 0);
+
+    if (this.activeInputResolver) {
+      const resolve = this.activeInputResolver;
+      this.activeInputResolver = null;
+      this.activeInputAbortResolver = null;
+      resolve(val);
+      return 0;
+    }
+
+    return await this.handleInputSubmit(val);
+  }
+
+  async enterAndSubmit(text, delay = 0) {
+    this.setInput(text);
+    if (delay > 0) {
+      await this.skippableDelay(delay);
+    }
+    return await this.submit();
+  }
+
   async handleInputSubmit(val) {
-    if (this.loginState !== 'LOGGED_IN' || this.isExecutingCommand) return;
+    if (this.loginState !== 'LOGGED_IN' || this.isExecutingCommand) return 0;
 
     this.isExecutingCommand = true;
     this.lineEditor.historyDraft = '';
@@ -568,11 +597,12 @@ export class Shell {
     this.inputLine.style.visibility = 'hidden';
 
     try {
-      await this.executeCommand(val);
+      return await this.executeCommand(val);
     } catch (err) {
       this.lastExitCode = 1;
       this.print(`Error executing command: ${err.message}`, 'color-error');
       console.error(err);
+      return 1;
     } finally {
       this.isExecutingCommand = false;
       this.inputLine.style.visibility = 'visible';
@@ -587,7 +617,12 @@ export class Shell {
 
   async executeCommand(cmdStr, echoPrompt = true) {
     let trimmed = cmdStr.trim();
-    if (trimmed === '') return 0;
+    if (trimmed === '') {
+      if (echoPrompt) {
+        this.print(this.getPromptHtml());
+      }
+      return 0;
+    }
 
     // 1. Bash History Expansions (!! and !$) - only for interactive commands
     if (echoPrompt && this.commandHistory.length > 1) {
@@ -912,7 +947,7 @@ export class Shell {
 
     // 1. Single match: apply immediately
     if (result.matches.length === 1 && result.replacement !== null) {
-      this.setInputValue(result.replacement, result.newCursorPos);
+      this.setInput(result.replacement, result.newCursorPos);
       this.tabCount = 0;
       return;
     }
@@ -924,7 +959,7 @@ export class Shell {
     this.lastTabInput = currentVal;
 
     if (result.lcp && result.lcp.length > result.currentToken.length) {
-      this.setInputValue(result.lcpReplacement, result.newLcpCursorPos);
+      this.setInput(result.lcpReplacement, result.newLcpCursorPos);
       this.lastTabInput = result.lcpReplacement;
       this.tabCount = 1;
       return;
@@ -1006,6 +1041,7 @@ export class Shell {
         this.lastTypeCommandSkipped = true;
         if (timeoutId) clearTimeout(timeoutId);
         cleanup();
+        this.setInput(fullCleanText);
         this.updateInputDisplay(fullCleanText);
         resolve(fullCleanText);
       };
@@ -1035,6 +1071,7 @@ export class Shell {
         if (tokenIdx >= tokens.length) {
           this.lastTypeCommandSkipped = false;
           cleanup();
+          this.setInput(displayedText);
           resolve(displayedText);
           return;
         }
@@ -1089,7 +1126,7 @@ export class Shell {
     if (!this.lastTypeCommandSkipped && enter_delay > 0) {
       await this.skippableDelay(enter_delay);
     }
-    await this.handleInputSubmit(cleanCmd);
+    await this.submit();
     return cleanCmd;
   }
 

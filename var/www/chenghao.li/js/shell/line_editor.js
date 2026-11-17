@@ -40,7 +40,7 @@ export class LineEditor {
     return this.input ? (this.input.selectionStart || 0) : 0;
   }
 
-  setInputValue(newVal, newCursorPos = null) {
+  setInput(newVal, newCursorPos = null) {
     if (!this.input) return;
     this.input.value = newVal;
     const pos = newCursorPos !== null ? Math.max(0, Math.min(newVal.length, newCursorPos)) : newVal.length;
@@ -106,7 +106,7 @@ export class LineEditor {
     this.searchMatchIndex = -1;
     this.promptPrefix.innerHTML = this.shell.getPromptHtml();
     if (cancel) {
-      this.setInputValue(this.searchSavedInput, this.searchSavedCursor);
+      this.setInput(this.searchSavedInput, this.searchSavedCursor);
     }
   }
 
@@ -179,25 +179,21 @@ export class LineEditor {
 
     // 1. Sub-Prompt Handling (readInput)
     if (this.shell.activeInputResolver) {
-      if (e.key === 'Enter') {
-        const val = this.input.value;
-        this.input.value = '';
-        this.inputDisplay.textContent = '';
-        const resolve = this.shell.activeInputResolver;
-        this.shell.activeInputResolver = null;
-        this.shell.activeInputAbortResolver = null;
-        resolve(val);
+      if ((e.ctrlKey && (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'm')) || (!e.ctrlKey && !e.altKey && e.key === 'Enter')) {
+        e.preventDefault();
+        await this.onSubmit();
+        return;
       } else if (e.key === 'Tab') {
         e.preventDefault();
       } else if (e.ctrlKey && e.key.toLowerCase() === 'u') {
         e.preventDefault();
-        this.setInputValue('', 0);
+        this.setInput('', 0);
       } else if (e.ctrlKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
-        this.setInputValue(this.input.value, 0);
+        this.setInput(this.input.value, 0);
       } else if (e.ctrlKey && e.key.toLowerCase() === 'e') {
         e.preventDefault();
-        this.setInputValue(this.input.value, this.input.value.length);
+        this.setInput(this.input.value, this.input.value.length);
       }
       return;
     }
@@ -238,7 +234,7 @@ export class LineEditor {
         e.preventDefault();
         const chosenCmd = this.searchMatch;
         this.exitSearchMode(false);
-        this.setInputValue('', 0);
+        this.setInput('', 0);
         if (chosenCmd) {
           await this.onSubmit(chosenCmd);
         }
@@ -257,7 +253,7 @@ export class LineEditor {
         const matchedCmd = this.searchMatch;
         this.exitSearchMode(false);
         const cursorPos = (e.key === 'ArrowLeft' || (e.ctrlKey && e.key.toLowerCase() === 'a')) ? 0 : matchedCmd.length;
-        this.setInputValue(matchedCmd, cursorPos);
+        this.setInput(matchedCmd, cursorPos);
         return;
       }
 
@@ -321,7 +317,7 @@ export class LineEditor {
       const currentPos = this.input.selectionStart || 0;
       this.shell.clear();
       this.promptPrefix.innerHTML = this.shell.getPromptHtml();
-      this.setInputValue(currentVal, currentPos);
+      this.setInput(currentVal, currentPos);
       this.shell.focus();
       return;
     }
@@ -356,28 +352,28 @@ export class LineEditor {
     // Ctrl+A / Home: Beginning of line
     if ((e.ctrlKey && e.key.toLowerCase() === 'a') || (!e.ctrlKey && !e.altKey && e.key === 'Home')) {
       e.preventDefault();
-      this.setInputValue(this.input.value, 0);
+      this.setInput(this.input.value, 0);
       return;
     }
 
     // Ctrl+E / End: End of line
     if ((e.ctrlKey && e.key.toLowerCase() === 'e') || (!e.ctrlKey && !e.altKey && e.key === 'End')) {
       e.preventDefault();
-      this.setInputValue(this.input.value, this.input.value.length);
+      this.setInput(this.input.value, this.input.value.length);
       return;
     }
 
     // Ctrl+B: Backward character
     if (e.ctrlKey && e.key.toLowerCase() === 'b') {
       e.preventDefault();
-      this.setInputValue(this.input.value, Math.max(0, (this.input.selectionStart || 0) - 1));
+      this.setInput(this.input.value, Math.max(0, (this.input.selectionStart || 0) - 1));
       return;
     }
 
     // Ctrl+F: Forward character
     if (e.ctrlKey && e.key.toLowerCase() === 'f') {
       e.preventDefault();
-      this.setInputValue(this.input.value, Math.min(this.input.value.length, (this.input.selectionStart || 0) + 1));
+      this.setInput(this.input.value, Math.min(this.input.value.length, (this.input.selectionStart || 0) + 1));
       return;
     }
 
@@ -385,7 +381,7 @@ export class LineEditor {
     if ((e.altKey && (e.key.toLowerCase() === 'b' || e.key === 'ArrowLeft')) || (e.ctrlKey && e.key === 'ArrowLeft')) {
       e.preventDefault();
       const pos = this.input.selectionStart || 0;
-      this.setInputValue(this.input.value, this.getPrevWordPos(this.input.value, pos));
+      this.setInput(this.input.value, this.getPrevWordPos(this.input.value, pos));
       return;
     }
 
@@ -393,7 +389,7 @@ export class LineEditor {
     if ((e.altKey && (e.key.toLowerCase() === 'f' || e.key === 'ArrowRight')) || (e.ctrlKey && e.key === 'ArrowRight')) {
       e.preventDefault();
       const pos = this.input.selectionStart || 0;
-      this.setInputValue(this.input.value, this.getNextWordPos(this.input.value, pos));
+      this.setInput(this.input.value, this.getNextWordPos(this.input.value, pos));
       return;
     }
 
@@ -405,7 +401,7 @@ export class LineEditor {
       const pos = this.input.selectionStart || 0;
       const cut = val.slice(0, pos);
       this.killRing = this.lastActionWasKill ? cut + this.killRing : cut;
-      this.setInputValue(val.slice(pos), 0);
+      this.setInput(val.slice(pos), 0);
       this.lastActionWasKill = true;
       return;
     }
@@ -417,7 +413,7 @@ export class LineEditor {
       const pos = this.input.selectionStart || 0;
       const cut = val.slice(pos);
       this.killRing = this.lastActionWasKill ? this.killRing + cut : cut;
-      this.setInputValue(val.slice(0, pos), pos);
+      this.setInput(val.slice(0, pos), pos);
       this.lastActionWasKill = true;
       return;
     }
@@ -430,7 +426,7 @@ export class LineEditor {
       const prev = this.getPrevWordPos(val, pos);
       const cut = val.slice(prev, pos);
       this.killRing = this.lastActionWasKill ? cut + this.killRing : cut;
-      this.setInputValue(val.slice(0, prev) + val.slice(pos), prev);
+      this.setInput(val.slice(0, prev) + val.slice(pos), prev);
       this.lastActionWasKill = true;
       return;
     }
@@ -443,7 +439,7 @@ export class LineEditor {
       const next = this.getNextWordPos(val, pos);
       const cut = val.slice(pos, next);
       this.killRing = this.lastActionWasKill ? this.killRing + cut : cut;
-      this.setInputValue(val.slice(0, pos) + val.slice(next), pos);
+      this.setInput(val.slice(0, pos) + val.slice(next), pos);
       this.lastActionWasKill = true;
       return;
     }
@@ -456,7 +452,7 @@ export class LineEditor {
       if (this.killRing) {
         const val = this.input.value;
         const pos = this.input.selectionStart || 0;
-        this.setInputValue(val.slice(0, pos) + this.killRing + val.slice(pos), pos + this.killRing.length);
+        this.setInput(val.slice(0, pos) + this.killRing + val.slice(pos), pos + this.killRing.length);
       }
       return;
     }
@@ -467,7 +463,7 @@ export class LineEditor {
       const val = this.input.value;
       const pos = this.input.selectionStart || 0;
       if (pos > 0) {
-        this.setInputValue(val.slice(0, pos - 1) + val.slice(pos), pos - 1);
+        this.setInput(val.slice(0, pos - 1) + val.slice(pos), pos - 1);
       }
       return;
     }
@@ -479,7 +475,7 @@ export class LineEditor {
       const pos = this.input.selectionStart || 0;
       if (val.length > 0) {
         if (pos < val.length) {
-          this.setInputValue(val.slice(0, pos) + val.slice(pos + 1), pos);
+          this.setInput(val.slice(0, pos) + val.slice(pos + 1), pos);
         }
       } else {
         this.shell.print('logout: not permitted in this session (session is persistent).', 'color-yellow');
@@ -498,10 +494,10 @@ export class LineEditor {
       if (val.length >= 2) {
         if (pos === val.length) {
           const newVal = val.slice(0, pos - 2) + val[pos - 1] + val[pos - 2];
-          this.setInputValue(newVal, pos);
+          this.setInput(newVal, pos);
         } else if (pos > 0) {
           const newVal = val.slice(0, pos - 1) + val[pos] + val[pos - 1] + val.slice(pos + 1);
-          this.setInputValue(newVal, pos + 1);
+          this.setInput(newVal, pos + 1);
         }
       }
       return;
@@ -528,7 +524,7 @@ export class LineEditor {
         const mid = val.slice(pEnd, nStart);
         const w2 = val.slice(nStart, nEnd);
         const newVal = val.slice(0, pStart) + w2 + mid + w1 + val.slice(nEnd);
-        this.setInputValue(newVal, pStart + w2.length + mid.length + w1.length);
+        this.setInput(newVal, pStart + w2.length + mid.length + w1.length);
       }
       return;
     }
@@ -548,7 +544,7 @@ export class LineEditor {
       } else if (e.key.toLowerCase() === 'c') {
         transformed = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
       }
-      this.setInputValue(val.slice(0, pos) + transformed + val.slice(next), next);
+      this.setInput(val.slice(0, pos) + transformed + val.slice(next), next);
       return;
     }
 
@@ -569,9 +565,9 @@ export class LineEditor {
 
           if (this.lastArgCycleIndex > 0) {
             const start = Math.max(0, pos - this.lastInsertedArgLen);
-            this.setInputValue(val.slice(0, start) + lastArg + val.slice(pos), start + lastArg.length);
+            this.setInput(val.slice(0, start) + lastArg + val.slice(pos), start + lastArg.length);
           } else {
-            this.setInputValue(val.slice(0, pos) + lastArg + val.slice(pos), pos + lastArg.length);
+            this.setInput(val.slice(0, pos) + lastArg + val.slice(pos), pos + lastArg.length);
           }
           this.lastInsertedArgLen = lastArg.length;
         } else {
@@ -590,7 +586,7 @@ export class LineEditor {
           this.historyDraft = this.input.value;
         }
         this.shell.historyIndex = 0;
-        this.setInputValue(history[0]);
+        this.setInput(history[0]);
       }
       return;
     }
@@ -599,7 +595,7 @@ export class LineEditor {
     if (e.altKey && (e.key === '>' || (e.shiftKey && e.key === '.'))) {
       e.preventDefault();
       this.shell.historyIndex = this.shell.commandHistory.length;
-      this.setInputValue(this.historyDraft || '');
+      this.setInput(this.historyDraft || '');
       return;
     }
 
@@ -612,7 +608,7 @@ export class LineEditor {
           this.historyDraft = this.input.value;
         }
         this.shell.historyIndex--;
-        this.setInputValue(history[this.shell.historyIndex]);
+        this.setInput(history[this.shell.historyIndex]);
       }
       return;
     }
@@ -623,10 +619,10 @@ export class LineEditor {
       const history = this.shell.commandHistory;
       if (this.shell.historyIndex < history.length - 1) {
         this.shell.historyIndex++;
-        this.setInputValue(history[this.shell.historyIndex]);
+        this.setInput(history[this.shell.historyIndex]);
       } else if (this.shell.historyIndex === history.length - 1) {
         this.shell.historyIndex = history.length;
-        this.setInputValue(this.historyDraft || '');
+        this.setInput(this.historyDraft || '');
       }
       return;
     }
@@ -634,9 +630,7 @@ export class LineEditor {
     // 10. Command Submission (Enter, Ctrl+J, Ctrl+M)
     if ((e.ctrlKey && (e.key.toLowerCase() === 'j' || e.key.toLowerCase() === 'm')) || (!e.ctrlKey && !e.altKey && e.key === 'Enter')) {
       e.preventDefault();
-      const val = this.input.value;
-      this.setInputValue('', 0);
-      await this.onSubmit(val);
+      await this.onSubmit();
       return;
     }
 
