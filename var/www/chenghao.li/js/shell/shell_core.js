@@ -352,7 +352,7 @@ export class Shell {
 
         if (this.loginState === 'LOGGED_IN' && !this.isBooting && this.input && !this.input.disabled) {
           const currentVal = this.input.value;
-          this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}^C`);
+          this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}^C`, 'color-text', { instant: true, fade: false });
           this.setInput('', 0);
           this.updatePrompt();
           this.focus();
@@ -712,7 +712,10 @@ export class Shell {
     line.innerHTML = htmlContent;
     this.output.appendChild(line);
     this._trimOutput();
-    this.body.scrollTop = this.body.scrollHeight;
+    if (this.queueLineIndex !== undefined) {
+      this.queueLineIndex += this.countPrintLines(htmlContent);
+    }
+    if (this.body) this.body.scrollTop = this.body.scrollHeight;
     return line;
   }
 
@@ -761,7 +764,7 @@ export class Shell {
       return null;
     }
 
-    if (options.instant || this.skipLineAnimation) {
+    if ((options.instant || this.skipLineAnimation) && this.activePrintCount === 0) {
       return this._printInstant(htmlContent, className);
     }
 
@@ -856,7 +859,9 @@ export class Shell {
     }
 
     if (typeof HTMLElement !== 'undefined' && htmlContent instanceof HTMLElement) {
-      this.attachFadeIn(htmlContent);
+      if (options.fade !== false && !options.instant) {
+        this.attachFadeIn(htmlContent);
+      }
       this.output.appendChild(htmlContent);
       this._trimOutput();
       if (this.queueLineIndex !== undefined) this.queueLineIndex++;
@@ -891,7 +896,9 @@ export class Shell {
       for (const child of children) {
         if (generation !== null && generation !== (this.printGeneration || 0)) return container;
         child.style.display = '';
-        this.attachFadeIn(child);
+        if (options.fade !== false && !options.instant) {
+          this.attachFadeIn(child);
+        }
         const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
         const delay = this.getLineDelay(idx, total);
         if (!this.skipLineAnimation && delay > 0) {
@@ -907,7 +914,9 @@ export class Shell {
     if (lines.length <= 1) {
       const lineEl = document.createElement('div');
       if (className) lineEl.className = className;
-      this.attachFadeIn(lineEl);
+      if (options.fade !== false && !options.instant) {
+        this.attachFadeIn(lineEl);
+      }
       lineEl.innerHTML = strContent || '&nbsp;';
       this.output.appendChild(lineEl);
       this._trimOutput();
@@ -924,7 +933,9 @@ export class Shell {
     for (const line of lines) {
       if (generation !== null && generation !== (this.printGeneration || 0)) return container;
       const lineEl = document.createElement('div');
-      this.attachFadeIn(lineEl);
+      if (options.fade !== false && !options.instant) {
+        this.attachFadeIn(lineEl);
+      }
       lineEl.innerHTML = line || '&nbsp;';
       container.appendChild(lineEl);
 
@@ -975,13 +986,13 @@ export class Shell {
           };
 
           this.activeInputResolver = (val) => {
-            this.print(`${promptText}${escapeHTML(val)}`);
+            this.print(`${promptText}${escapeHTML(val)}`, 'color-text', { instant: true, fade: false });
             cleanup();
             resolve(val);
           };
 
           this.activeInputAbortResolver = () => {
-            this.print(`${promptText}${escapeHTML(this.input ? this.input.value : '')}^C`);
+            this.print(`${promptText}${escapeHTML(this.input ? this.input.value : '')}^C`, 'color-text', { instant: true, fade: false });
             cleanup();
             resolve(null);
           };
@@ -1122,7 +1133,7 @@ export class Shell {
     let trimmed = cmdStr.trim();
     if (trimmed === '') {
       if (echoPrompt) {
-        this.print(this.getPromptHtml());
+        this.print(this.getPromptHtml(), 'color-text', { instant: true, fade: false });
       }
       return 0;
     }
@@ -1144,7 +1155,7 @@ export class Shell {
       }
       if (expanded) {
         this.commandHistory[this.commandHistory.length - 1] = trimmed;
-        this.print(this.escapeHTML(trimmed), 'color-dim');
+        this.print(this.escapeHTML(trimmed), 'color-dim', { instant: true, fade: false });
       }
     }
 
@@ -1195,7 +1206,7 @@ export class Shell {
     }
 
     if (echoPrompt) {
-      this.print(`${this.getPromptHtml()} ${printedLine}`);
+      this.print(`${this.getPromptHtml()} ${printedLine}`, 'color-text', { instant: true, fade: false });
     }
 
     if (commandPart === '') return 0;
@@ -1472,7 +1483,7 @@ export class Shell {
     // 1st Tab: ring subtle terminal bell
     // 2nd Tab: echo prompt in scrollback and display candidates
     if (isConsecutive && this.tabCount >= 1) {
-      this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`);
+      this.print(`${this.getPromptHtml()} ${this.escapeHTML(currentVal)}`, 'color-text', { instant: true, fade: false });
       this.print(result.formattedMatches.join('    '));
       this.tabCount = 0;
     } else {
