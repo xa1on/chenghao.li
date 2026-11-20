@@ -14,6 +14,12 @@ export const LOCAL_BOOT_PROMPT = 'C:\\Users\\cli&gt;';
 export const BOOT_SSH_COMMAND = `ssh ${DEFAULT_USERNAME}@${HOSTNAME}`;
 export const MAX_TERMINAL_OUTPUT_LINES = 150;
 export const TYPEWRITER_DEFAULT_DELAY = 50;
+export const LINE_RENDER_DELAY = 16;
+export const LINE_RENDER_DELAY_MIN = 6;
+export const LINE_RENDER_DELAY_MAX = 50;
+export const LINE_RENDER_ACCEL_EXPONENT = 1.4;
+export const LINE_FADE_DURATION = 120;
+export const SCROLL_SMOOTH_FACTOR = 0.12;
 export const MARKDOWN_WRAP_LIMIT = 120;
 export const TAB_DOUBLE_PRESS_INTERVAL = 500;
 

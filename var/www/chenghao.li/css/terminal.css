@@ -60,9 +60,10 @@
   opacity: 0.70;
 }
 
-/* Ensure backdrop clones do not calculate expensive nested text-shadows */
+/* Ensure backdrop clones do not calculate expensive nested text-shadows or re-animate */
 .terminal-glow-backdrop * {
   text-shadow: none !important;
+  animation: none !important;
 }
 
 .terminal-output {
@@ -89,6 +90,25 @@
 /* Text coloring classes */
 .color-text {
   color: var(--text-color);
+}
+
+/* ==========================================
+   Line-by-Line Fade-In Animation
+   ========================================== */
+@keyframes terminalLineFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.terminal-line-fade-in {
+  animation: terminalLineFadeIn var(--line-fade-duration, 0.12s) ease-out forwards;
+  will-change: opacity, transform;
 }
 
 .color-dir {

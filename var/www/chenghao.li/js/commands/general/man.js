@@ -52,17 +52,7 @@ export class TerminalPager {
       }
 
       // Hide shell standard output & prompt
-      this.shell.output.style.display = 'none';
-      this.shell.inputLine.classList.add('hidden-input-line');
-
-      // Hide glow backdrops to prevent phantom scroll height or bleed-through
-      if (this.shell.glowBackdrops) {
-        this.shell.glowBackdrops.forEach(el => {
-          if (el) el.style.display = 'none';
-        });
-      }
-
-      this.shell.body.style.overflowY = 'hidden';
+      this.shell.enterFullScreenView();
 
       this.shell.loginState = 'GAME'; // Pause regular readline input
 
@@ -284,14 +274,7 @@ export class TerminalPager {
       this.container.remove();
     }
 
-    this.shell.output.style.display = 'flex';
-    this.shell.inputLine.classList.remove('hidden-input-line');
-    if (this.shell.glowBackdrops) {
-      this.shell.glowBackdrops.forEach(el => {
-        if (el) el.style.display = '';
-      });
-    }
-    this.shell.body.style.overflowY = '';
+    this.shell.exitFullScreenView();
     this.shell.loginState = this.originalState;
 
     if (this.shell.popInputHandler) {

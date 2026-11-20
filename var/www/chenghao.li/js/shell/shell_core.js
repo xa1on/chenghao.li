@@ -8,6 +8,12 @@ import {
   PROMPT_SYMBOL,
   MAX_TERMINAL_OUTPUT_LINES,
   TYPEWRITER_DEFAULT_DELAY,
+  LINE_RENDER_DELAY,
+  LINE_RENDER_DELAY_MIN,
+  LINE_RENDER_DELAY_MAX,
+  LINE_RENDER_ACCEL_EXPONENT,
+  LINE_FADE_DURATION,
+  SCROLL_SMOOTH_FACTOR,
   MARKDOWN_WRAP_LIMIT,
   TAB_DOUBLE_PRESS_INTERVAL
 } from '../config.js';
@@ -22,6 +28,58 @@ import {
 import { runScript } from './script_runner.js';
 import { LineEditor } from './line_editor.js';
 import { getCompletions } from './completer.js';
+
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+
+export function splitHtmlLines(html) {
+  if (typeof html !== 'string') return [String(html)];
+  const rawLines = html.replace(/<br\s*\/?>/gi, '\n').split('\n');
+  const tagStack = [];
+
+  return rawLines.map(line => {
+    const prefix = tagStack.map(t => t.full).join('');
+    let processedLine = '';
+    const tagRegex = /<\/?([a-zA-Z0-9]+)(?:\s+[^>]*)?>/g;
+    let lastIdx = 0;
+    let match;
+
+    while ((match = tagRegex.exec(line)) !== null) {
+      const fullTag = match[0];
+      const tagName = match[1].toLowerCase();
+      const textChunk = line.slice(lastIdx, match.index);
+      lastIdx = tagRegex.lastIndex;
+
+      if (VOID_TAGS.has(tagName) || fullTag.endsWith('/>')) {
+        processedLine += textChunk + fullTag;
+        continue;
+      }
+
+      if (fullTag.startsWith('</')) {
+        let found = false;
+        for (let i = tagStack.length - 1; i >= 0; i--) {
+          if (tagStack[i].tag === tagName) {
+            tagStack.splice(i, 1);
+            found = true;
+            break;
+          }
+        }
+        if (found) {
+          processedLine += textChunk + fullTag;
+        } else {
+          // Drop orphaned closing tag
+          processedLine += textChunk;
+        }
+      } else {
+        tagStack.push({ tag: tagName, full: fullTag });
+        processedLine += textChunk + fullTag;
+      }
+    }
+
+    processedLine += line.slice(lastIdx);
+    const suffix = tagStack.slice().reverse().map(t => `</${t.tag}>`).join('');
+    return prefix + processedLine + suffix;
+  });
+}
 
 export class Shell {
   constructor(options = {}) {
@@ -62,6 +120,30 @@ export class Shell {
     this.onConnect = options.onConnect || null;
     this.typewriterDelay = options.typewriterDelay !== undefined ? options.typewriterDelay : (options.typeSpeed !== undefined ? options.typeSpeed : TYPEWRITER_DEFAULT_DELAY);
     this.maxOutputLines = options.maxOutputLines || Math.max(MAX_TERMINAL_OUTPUT_LINES || 150, 1000);
+    this.lineRenderDelay = options.lineRenderDelay !== undefined ? options.lineRenderDelay : LINE_RENDER_DELAY;
+    this.lineRenderDelayMin = options.lineRenderDelayMin !== undefined ? options.lineRenderDelayMin : (typeof LINE_RENDER_DELAY_MIN !== 'undefined' ? LINE_RENDER_DELAY_MIN : 6);
+    this.lineRenderDelayMax = options.lineRenderDelayMax !== undefined ? options.lineRenderDelayMax : (typeof LINE_RENDER_DELAY_MAX !== 'undefined' ? LINE_RENDER_DELAY_MAX : 36);
+    this.lineRenderAccelExponent = options.lineRenderAccelExponent !== undefined ? options.lineRenderAccelExponent : (typeof LINE_RENDER_ACCEL_EXPONENT !== 'undefined' ? LINE_RENDER_ACCEL_EXPONENT : 1.2);
+    this.scrollSmoothFactor = options.scrollSmoothFactor !== undefined ? options.scrollSmoothFactor : (typeof SCROLL_SMOOTH_FACTOR !== 'undefined' ? SCROLL_SMOOTH_FACTOR : 0.12);
+    this.lineFadeDuration = options.lineFadeDuration !== undefined ? options.lineFadeDuration : LINE_FADE_DURATION;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.setProperty('--line-fade-duration', `${this.lineFadeDuration}ms`);
+    }
+    this.printQueue = Promise.resolve();
+    this.printGeneration = 0;
+    this.activePrintCount = 0;
+    this.queueTotalLines = 0;
+    this.queueLineIndex = 0;
+    this.skipLineAnimation = false;
+    this._skipHandlerAttached = false;
+    this._skipHandler = null;
+    this._userScrolledUp = false;
+    this._autoScrollRaf = null;
+    this._currentScrollTop = 0;
+    this._wheelHandler = null;
+    this._touchStartY = null;
+    this._touchMoveHandler = null;
+    this._touchStartHandler = null;
 
     // Command execution status & environment variables
     this.lastExitCode = 0;
@@ -458,23 +540,402 @@ export class Shell {
       .replace(/&#039;/g, "'");
   }
 
-  print(htmlContent, className = 'color-text') {
+  _startAutoScroll() {
+    if (this._autoScrollRaf || typeof requestAnimationFrame === 'undefined') return;
+
+    if (this._currentScrollTop === null || this._currentScrollTop === undefined) {
+      this._currentScrollTop = this.body ? this.body.scrollTop : 0;
+    }
+
+    const easeScroll = () => {
+      if (this.body && !this._userScrolledUp) {
+        const target = this.body.scrollHeight - this.body.clientHeight;
+        const current = this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop;
+        if (target > current) {
+          const diff = target - current;
+          if (diff < 0.5) {
+            this._currentScrollTop = target;
+            this.body.scrollTop = target;
+          } else {
+            const factor = this.scrollSmoothFactor || 0.12;
+            const step = Math.max(0.5, diff * factor);
+            this._currentScrollTop = Math.min(target, current + step);
+            this.body.scrollTop = this._currentScrollTop;
+          }
+        } else if (current > target) {
+          this._currentScrollTop = target;
+        }
+      }
+
+      if (this.activePrintCount > 0) {
+        this._autoScrollRaf = requestAnimationFrame(easeScroll);
+      } else {
+        // When prints have completed, ensure it finishes easing to the bottom
+        if (this.body && !this._userScrolledUp) {
+          const target = this.body.scrollHeight - this.body.clientHeight;
+          const current = this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop;
+          if (target > current && (target - current) >= 0.5) {
+            const diff = target - current;
+            const factor = this.scrollSmoothFactor || 0.12;
+            const step = Math.max(0.5, diff * factor);
+            this._currentScrollTop = Math.min(target, current + step);
+            this.body.scrollTop = this._currentScrollTop;
+            this._autoScrollRaf = requestAnimationFrame(easeScroll);
+            return;
+          }
+        }
+        this._autoScrollRaf = null;
+      }
+    };
+
+    this._autoScrollRaf = requestAnimationFrame(easeScroll);
+  }
+
+  _stopAutoScroll() {
+    if (this._autoScrollRaf) {
+      cancelAnimationFrame(this._autoScrollRaf);
+      this._autoScrollRaf = null;
+    }
+  }
+
+  _ensureSkipListeners() {
+    if (this._skipHandlerAttached) return;
+    this._skipHandlerAttached = true;
+    this.skipLineAnimation = false;
+
+    this._skipHandler = (e) => {
+      if (e.type === 'keydown' && (e.ctrlKey || e.metaKey || e.altKey)) return;
+      this.skipLineAnimation = true;
+      this._userScrolledUp = false;
+      if (this.body) {
+        this.body.scrollTop = this.body.scrollHeight;
+        this._currentScrollTop = this.body.scrollTop;
+      }
+    };
+
+    this._wheelHandler = (e) => {
+      if (!this.body) return;
+      if (e.deltaY < 0) {
+        // User scrolled UP -> pause auto-scroll
+        this._userScrolledUp = true;
+      } else if (e.deltaY > 0) {
+        // User scrolled DOWN -> resume auto-scroll if near bottom
+        const atBottom = (this.body.scrollHeight - this.body.scrollTop - this.body.clientHeight) <= 30;
+        if (atBottom) {
+          this._userScrolledUp = false;
+        }
+      }
+      this._currentScrollTop = this.body.scrollTop;
+    };
+
+    this._touchStartHandler = (e) => {
+      if (e.touches && e.touches.length > 0) {
+        this._touchStartY = e.touches[0].clientY;
+      }
+    };
+
+    this._touchMoveHandler = (e) => {
+      if (this._touchStartY !== null && e.touches && e.touches.length > 0) {
+        const delta = e.touches[0].clientY - this._touchStartY;
+        if (delta > 8) {
+          // Dragging down moves content up (scroll up)
+          this._userScrolledUp = true;
+        } else if (delta < -8 && this.body) {
+          const atBottom = (this.body.scrollHeight - this.body.scrollTop - this.body.clientHeight) <= 30;
+          if (atBottom) {
+            this._userScrolledUp = false;
+          }
+        }
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('keydown', this._skipHandler, true);
+      window.addEventListener('mousedown', this._skipHandler, true);
+    }
+    if (this.body) {
+      this.body.addEventListener('wheel', this._wheelHandler, { passive: true });
+      this.body.addEventListener('touchstart', this._touchStartHandler, { passive: true });
+      this.body.addEventListener('touchmove', this._touchMoveHandler, { passive: true });
+    }
+    this._startAutoScroll();
+  }
+
+  _cleanupSkipListeners() {
+    if (!this._skipHandlerAttached) return;
+    this._skipHandlerAttached = false;
+    if (this._skipHandler && typeof window !== 'undefined') {
+      window.removeEventListener('keydown', this._skipHandler, true);
+      window.removeEventListener('mousedown', this._skipHandler, true);
+      this._skipHandler = null;
+    }
+    if (this.body) {
+      if (this._wheelHandler) {
+        this.body.removeEventListener('wheel', this._wheelHandler, { passive: true });
+        this._wheelHandler = null;
+      }
+      if (this._touchStartHandler) {
+        this.body.removeEventListener('touchstart', this._touchStartHandler, { passive: true });
+        this._touchStartHandler = null;
+      }
+      if (this._touchMoveHandler) {
+        this.body.removeEventListener('touchmove', this._touchMoveHandler, { passive: true });
+        this._touchMoveHandler = null;
+      }
+    }
+    this.skipLineAnimation = false;
+    this._userScrolledUp = false;
+  }
+
+  _delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  _trimOutput() {
+    while (this.output.children.length > this.maxOutputLines) {
+      this.output.removeChild(this.output.firstChild);
+    }
+  }
+
+  _smoothScrollToBottom() {
+    if (this.skipLineAnimation) {
+      if (this.body) this.body.scrollTop = this.body.scrollHeight;
+    } else {
+      this._userScrolledUp = false;
+      this._startAutoScroll();
+    }
+  }
+
+  _printInstant(htmlContent, className) {
+    const line = document.createElement('div');
+    line.className = className;
+    line.innerHTML = htmlContent;
+    this.output.appendChild(line);
+    this._trimOutput();
+    this.body.scrollTop = this.body.scrollHeight;
+    return line;
+  }
+
+  countPrintLines(htmlContent) {
+    if (!htmlContent) return 1;
+    if (typeof HTMLElement !== 'undefined' && htmlContent instanceof HTMLElement) {
+      return 1;
+    }
+    if (typeof htmlContent === 'string' && htmlContent.includes('<div')) {
+      if (typeof document !== 'undefined') {
+        const tempWrapper = document.createElement('div');
+        tempWrapper.innerHTML = htmlContent;
+        if (tempWrapper.children.length === 1 && tempWrapper.firstElementChild.children.length > 1) {
+          return tempWrapper.firstElementChild.children.length;
+        }
+      }
+    }
+    return splitHtmlLines(String(htmlContent)).length;
+  }
+
+  getLineDelay(index = 0, total = 1) {
+    if (total <= 2) {
+      return this.lineRenderDelayMin;
+    }
+    const minDelay = this.lineRenderDelayMin;
+    const maxDelay = this.lineRenderDelayMax;
+    if (minDelay >= maxDelay) {
+      return minDelay;
+    }
+
+    // Normalized progress across the queue: 0.0 at top, 1.0 at bottom
+    const t = Math.max(0, Math.min(1, index / (total - 1)));
+
+    // Bell curve: sin(pi * t) goes from 0 at t=0, to 1 at t=0.5, to 0 at t=1
+    const speedFactor = Math.pow(Math.sin(Math.PI * t), this.lineRenderAccelExponent || 1.2);
+
+    // Endpoints (speedFactor 0) -> maxDelay (slow)
+    // Midpoint (speedFactor 1) -> minDelay (fast)
+    const delay = maxDelay - (maxDelay - minDelay) * speedFactor;
+    return Math.round(delay);
+  }
+
+  print(htmlContent, className = 'color-text', options = {}) {
     if (this.redirectCapture !== null && className !== 'color-error') {
       this.redirectCapture.push(this.htmlToPlainText(htmlContent));
       return null;
     }
 
-    const line = document.createElement('div');
-    line.className = className;
-    line.innerHTML = htmlContent;
-    this.output.appendChild(line);
-
-    while (this.output.children.length > this.maxOutputLines) {
-      this.output.removeChild(this.output.firstChild);
+    if (options.instant || this.skipLineAnimation) {
+      return this._printInstant(htmlContent, className);
     }
 
-    this.body.scrollTop = this.body.scrollHeight;
-    return line;
+    const linesInThisPrint = this.countPrintLines(htmlContent);
+    this.queueTotalLines = (this.queueTotalLines || 0) + linesInThisPrint;
+
+    this.activePrintCount++;
+    this._ensureSkipListeners();
+    const generation = this.printGeneration || 0;
+
+    const queued = this.printQueue.then(async () => {
+      if (generation !== (this.printGeneration || 0)) {
+        return null;
+      }
+      try {
+        return await this._renderPrint(htmlContent, className, options, generation);
+      } finally {
+        this.activePrintCount--;
+        if (this.activePrintCount <= 0 || generation !== (this.printGeneration || 0)) {
+          if (generation !== (this.printGeneration || 0)) {
+            this.activePrintCount = 0;
+          }
+          if (this.activePrintCount <= 0) {
+            this.activePrintCount = 0;
+            this.queueTotalLines = 0;
+            this.queueLineIndex = 0;
+            this._cleanupSkipListeners();
+          }
+        }
+      }
+    });
+
+    this.printQueue = queued.catch(() => { });
+    return queued;
+  }
+
+  attachFadeIn(el) {
+    if (!el) return;
+    el.classList.add('terminal-line-fade-in');
+    const cleanup = () => el.classList.remove('terminal-line-fade-in');
+    el.addEventListener('animationend', cleanup, { once: true });
+    setTimeout(cleanup, (this.lineFadeDuration || 120) + 50);
+  }
+
+  enterFullScreenView() {
+    if (this.output) {
+      this.output.querySelectorAll('.terminal-line-fade-in').forEach(el => {
+        el.classList.remove('terminal-line-fade-in');
+      });
+      this.output.style.display = 'none';
+    }
+    if (this.inputLine) {
+      this.inputLine.classList.add('hidden-input-line');
+    }
+    if (this.glowBackdrops) {
+      this.glowBackdrops.forEach(el => {
+        if (el) el.style.display = 'none';
+      });
+    }
+    if (this.body) {
+      this.body.style.overflowY = 'hidden';
+    }
+  }
+
+  exitFullScreenView() {
+    if (this.output) {
+      this.output.querySelectorAll('.terminal-line-fade-in').forEach(el => {
+        el.classList.remove('terminal-line-fade-in');
+      });
+      this.output.style.display = 'flex';
+    }
+    if (this.inputLine) {
+      this.inputLine.classList.remove('hidden-input-line');
+    }
+    if (this.glowBackdrops) {
+      this.glowBackdrops.forEach(el => {
+        if (el) el.style.display = '';
+      });
+    }
+    if (this.body) {
+      this.body.style.overflowY = '';
+    }
+  }
+
+  async _renderPrint(htmlContent, className = 'color-text', options = {}, generation = null) {
+    if (generation !== null && generation !== (this.printGeneration || 0)) {
+      return null;
+    }
+
+    if (htmlContent === undefined || htmlContent === null) {
+      htmlContent = '';
+    }
+
+    if (typeof HTMLElement !== 'undefined' && htmlContent instanceof HTMLElement) {
+      this.attachFadeIn(htmlContent);
+      this.output.appendChild(htmlContent);
+      this._trimOutput();
+      if (this.queueLineIndex !== undefined) this.queueLineIndex++;
+      return htmlContent;
+    }
+
+    if (options.instant || this.skipLineAnimation) {
+      return this._printInstant(htmlContent, className);
+    }
+
+    // Check if htmlContent is a structured container with pre-existing block children (like .buddy-box or .markdown-body)
+    let isStructuredContainer = false;
+    let tempWrapper = null;
+    if (typeof htmlContent === 'string' && htmlContent.includes('<div')) {
+      tempWrapper = document.createElement('div');
+      tempWrapper.innerHTML = htmlContent;
+      if (tempWrapper.children.length === 1 && tempWrapper.firstElementChild.children.length > 1) {
+        isStructuredContainer = true;
+      }
+    }
+
+    if (isStructuredContainer && tempWrapper) {
+      const container = tempWrapper.firstElementChild;
+      const children = Array.from(container.children);
+      children.forEach(child => {
+        child.style.display = 'none';
+      });
+      this.output.appendChild(container);
+      this._trimOutput();
+
+      const total = this.queueTotalLines || children.length;
+      for (const child of children) {
+        if (generation !== null && generation !== (this.printGeneration || 0)) return container;
+        child.style.display = '';
+        this.attachFadeIn(child);
+        const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
+        const delay = this.getLineDelay(idx, total);
+        if (!this.skipLineAnimation && delay > 0) {
+          await this._delay(delay);
+        }
+      }
+      return container;
+    }
+
+    const strContent = String(htmlContent);
+    const lines = splitHtmlLines(strContent);
+
+    if (lines.length <= 1) {
+      const lineEl = document.createElement('div');
+      if (className) lineEl.className = className;
+      this.attachFadeIn(lineEl);
+      lineEl.innerHTML = strContent || '&nbsp;';
+      this.output.appendChild(lineEl);
+      this._trimOutput();
+      if (this.queueLineIndex !== undefined) this.queueLineIndex++;
+      return lineEl;
+    }
+
+    const container = document.createElement('div');
+    container.className = className;
+    this.output.appendChild(container);
+    this._trimOutput();
+
+    const total = this.queueTotalLines || lines.length;
+    for (const line of lines) {
+      if (generation !== null && generation !== (this.printGeneration || 0)) return container;
+      const lineEl = document.createElement('div');
+      this.attachFadeIn(lineEl);
+      lineEl.innerHTML = line || '&nbsp;';
+      container.appendChild(lineEl);
+
+      const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
+      const delay = this.getLineDelay(idx, total);
+      if (!this.skipLineAnimation && delay > 0) {
+        await this._delay(delay);
+      }
+    }
+
+    return container;
   }
 
   printError(msg) {
@@ -486,38 +947,80 @@ export class Shell {
     audio?.playBell?.();
   }
 
-  readInput(promptText) {
-    return new Promise((resolve) => {
-      const originalPrefixHTML = this.promptPrefix.innerHTML;
-      this.input.disabled = false;
-      this.inputLine.style.visibility = 'visible';
-      this.promptPrefix.innerHTML = promptText;
-      this.input.value = '';
+      async readInput(promptText) {
+        await this.printQueue;
+        return new Promise((resolve) => {
+          const originalPrefixHTML = this.promptPrefix.innerHTML;
+          if (this.input) this.input.disabled = false;
+          if (this.inputLine) {
+            this.inputLine.style.display = '';
+            this.inputLine.style.visibility = 'visible';
+            this.inputLine.classList.remove('terminal-line-fade-in');
+            void this.inputLine.offsetWidth;
+            this.attachFadeIn(this.inputLine);
+          }
+          this.promptPrefix.innerHTML = promptText;
+          if (this.input) this.input.value = '';
 
-      const cleanup = () => {
-        this.input.disabled = true;
-        this.inputLine.style.visibility = 'hidden';
-        this.promptPrefix.innerHTML = originalPrefixHTML;
-        this.activeInputResolver = null;
-        this.activeInputAbortResolver = null;
-      };
+          const cleanup = () => {
+            if (this.input) this.input.disabled = true;
+            if (this.inputLine) {
+              this.inputLine.style.display = 'none';
+              this.inputLine.style.visibility = 'hidden';
+              this.inputLine.classList.remove('terminal-line-fade-in');
+            }
+            this.promptPrefix.innerHTML = originalPrefixHTML;
+            this.activeInputResolver = null;
+            this.activeInputAbortResolver = null;
+          };
 
-      this.activeInputResolver = (val) => {
-        this.print(`${promptText}${escapeHTML(val)}`);
-        cleanup();
-        resolve(val);
-      };
+          this.activeInputResolver = (val) => {
+            this.print(`${promptText}${escapeHTML(val)}`);
+            cleanup();
+            resolve(val);
+          };
 
-      this.activeInputAbortResolver = () => {
-        this.print(`${promptText}${escapeHTML(this.input.value)}^C`);
-        cleanup();
-        resolve(null);
-      };
+          this.activeInputAbortResolver = () => {
+            this.print(`${promptText}${escapeHTML(this.input ? this.input.value : '')}^C`);
+            cleanup();
+            resolve(null);
+          };
 
-      this.updateInputDisplay('');
-      this.focus();
-    });
-  }
+          this.updateInputDisplay('');
+          this.focus();
+          this._startAutoScroll();
+        });
+      }
+
+      showPromptLine() {
+        if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.getActiveInputHandler()) {
+          return;
+        }
+        this.updatePrompt();
+        if (this.inputLine) {
+          this.inputLine.style.display = '';
+          this.inputLine.style.visibility = 'visible';
+          this.inputLine.classList.remove('terminal-line-fade-in');
+          void this.inputLine.offsetWidth;
+          this.attachFadeIn(this.inputLine);
+        }
+        if (this.input) {
+          this.input.disabled = false;
+        }
+        this.focus();
+        this._startAutoScroll();
+      }
+
+      hidePromptLine() {
+        if (this.inputLine) {
+          this.inputLine.style.display = 'none';
+          this.inputLine.style.visibility = 'hidden';
+          this.inputLine.classList.remove('terminal-line-fade-in');
+        }
+        if (this.input) {
+          this.input.disabled = true;
+        }
+      }
 
   parseMarkdown(text, basePathArr = [], wrapLimit = MARKDOWN_WRAP_LIMIT) {
     return parseMarkdown(text, this.fileSystem ? this.fileSystem.root : {}, basePathArr, wrapLimit);
@@ -528,11 +1031,15 @@ export class Shell {
   }
 
   clear() {
-    this.output.innerHTML = '';
+    this.printGeneration++;
+    if (this.output) this.output.innerHTML = '';
     this.glowBackdrops.forEach(el => {
       if (el) el.innerHTML = '';
     });
-    this.body.scrollTop = 0;
+    if (this.body) this.body.scrollTop = 0;
+    this._currentScrollTop = 0;
+    this.queueTotalLines = 0;
+    this.queueLineIndex = 0;
   }
 
   focus() {
@@ -556,8 +1063,6 @@ export class Shell {
   }
 
   async submit() {
-    if (this.isExecutingCommand) return 0;
-
     const val = this.getInputValue();
     this.setInput('', 0);
 
@@ -569,6 +1074,7 @@ export class Shell {
       return 0;
     }
 
+        if (this.isExecutingCommand) return 0;
     return await this.handleInputSubmit(val);
   }
 
@@ -593,24 +1099,21 @@ export class Shell {
       this.historyIndex = this.commandHistory.length;
     }
 
-    this.input.disabled = true;
-    this.inputLine.style.visibility = 'hidden';
+    this.hidePromptLine();
 
     try {
-      return await this.executeCommand(val);
+      const code = await this.executeCommand(val);
+      await this.printQueue;
+      return code;
     } catch (err) {
       this.lastExitCode = 1;
       this.print(`Error executing command: ${err.message}`, 'color-error');
+      await this.printQueue;
       console.error(err);
       return 1;
     } finally {
       this.isExecutingCommand = false;
-      this.inputLine.style.visibility = 'visible';
-      this.input.disabled = this.isBooting;
-      this.updatePrompt();
-      if (!this.isBooting) {
-        this.focus();
-      }
+      this.showPromptLine();
       this.abortSignal = false;
     }
   }
@@ -1264,8 +1767,8 @@ export class Shell {
   async startConnection() {
     this.loginState = 'BOOTING';
     this.isBooting = true;
-    this.input.disabled = true;
-    this.promptPrefix.innerHTML = `<span class="color-accent">${this.localPrompt}</span>`;
+    this.hidePromptLine();
+    this.promptPrefix.innerHTML = '';
     this.inputDisplay.textContent = '';
 
     const { initialPath, initialCommand } = this.getInitialDeepLink();
@@ -1273,28 +1776,17 @@ export class Shell {
     audio.startHum();
 
     const sshCmd = `ssh ${this.currentUsername}@${this.hostname}`;
-    const cmdText = `ssh ${this.currentUsername}<d:100>@${this.hostname}`;
-    await this.typeCommand(cmdText);
-
-    await this.skippableDelay(200);
-    this.print(`<span class="color-accent">${this.localPrompt}</span> ${sshCmd}`);
-    this.promptPrefix.innerHTML = '';
-    this.updateInputDisplay('');
-
-    await this.skippableDelay(1000);
+    this.print(`<span class="color-accent">${this.localPrompt}</span> ${sshCmd}`, 'color-text', { instant: true });
 
     if (this.onConnect) {
       await this.onConnect(this);
     }
 
-    this.promptPrefix.innerHTML = this.getPromptHtml();
     this.loginState = 'LOGGED_IN';
     audio.fadeHumQuiet();
 
-    await this.skippableDelay(600);
-
     // Preset initial ls
-    await this.typeAndSubmit('ls<d:200> # click items to navigate<d:75>, or use cat/cd', null, 400);
+    await this.executeCommand('ls # click items to navigate, or use cat/cd', true);
 
     if (initialPath && initialPath !== '~' && this.fileSystem) {
       const resolved = this.fileSystem.resolvePath(this.currentPath, initialPath);
@@ -1302,24 +1794,20 @@ export class Shell {
         const targetObj = this.fileSystem.getNodeByPath(resolved);
         const isDir = typeof targetObj === 'object';
 
-        await this.skippableDelay(400);
-
         if (isDir) {
-          await this.typeAndSubmit(`cd ${initialPath}`);
+          await this.executeCommand(`cd ${initialPath}`, true);
           if (!initialCommand) {
-            await this.skippableDelay(300);
-            await this.typeAndSubmit('ls');
+            await this.executeCommand('ls', true);
           }
         } else {
           const slashIdx = initialPath.lastIndexOf('/');
           if (slashIdx !== -1) {
             const parentDir = initialPath.slice(0, slashIdx);
             const fileName = initialPath.slice(slashIdx + 1);
-            await this.typeAndSubmit(`cd ${parentDir}`);
-            await this.skippableDelay(300);
-            await this.typeAndSubmit(`cat ${fileName}`);
+            await this.executeCommand(`cd ${parentDir}`, true);
+            await this.executeCommand(`cat ${fileName}`, true);
           } else {
-            await this.typeAndSubmit(`cat ${initialPath}`);
+            await this.executeCommand(`cat ${initialPath}`, true);
           }
         }
       } else {
@@ -1328,15 +1816,20 @@ export class Shell {
     }
 
     if (initialCommand) {
-      await this.skippableDelay(400);
-      await this.typeAndSubmit(initialCommand);
+      const trimmed = initialCommand.trim();
+      if (trimmed !== '') {
+        if (this.commandHistory.length === 0 || this.commandHistory[this.commandHistory.length - 1] !== trimmed) {
+          this.commandHistory.push(trimmed);
+        }
+        this.historyIndex = this.commandHistory.length;
+      }
+      await this.executeCommand(initialCommand, true);
     }
 
+    await this.printQueue;
     this.isBooting = false;
-    this.input.disabled = false;
-    this.inputLine.style.visibility = 'visible';
-    this.updatePrompt();
-    this.focus();
+
+    this.showPromptLine();
     this.updateBrowserUrl(this.formatDisplayPath(), initialCommand);
   }
 }

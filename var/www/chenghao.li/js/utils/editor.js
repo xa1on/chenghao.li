@@ -35,18 +35,7 @@ export class BaseEditor {
     }
 
     // Hide terminal output & input line
-    this.shell.output.style.display = 'none';
-    this.shell.inputLine.classList.add('hidden-input-line');
-
-    // Hide glow backdrops to prevent phantom scroll height or bleed-through
-    if (this.shell.glowBackdrops) {
-      this.shell.glowBackdrops.forEach(el => {
-        if (el) el.style.display = 'none';
-      });
-    }
-
-    // Prevent terminal body from scrolling
-    this.shell.body.style.overflowY = 'hidden';
+    this.shell.enterFullScreenView();
 
     // Create editor container
     this.container = document.createElement('div');
@@ -115,14 +104,7 @@ export class BaseEditor {
     if (this.container) this.container.remove();
     if (this.textarea) this.textarea.remove();
 
-    this.shell.output.style.display = 'flex';
-    this.shell.inputLine.classList.remove('hidden-input-line');
-    if (this.shell.glowBackdrops) {
-      this.shell.glowBackdrops.forEach(el => {
-        if (el) el.style.display = '';
-      });
-    }
-    this.shell.body.style.overflowY = '';
+    this.shell.exitFullScreenView();
     if (this.shell.body && typeof this.savedScrollTop === 'number') {
       this.shell.body.scrollTop = this.savedScrollTop;
     }

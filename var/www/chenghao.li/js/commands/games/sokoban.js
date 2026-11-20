@@ -145,10 +145,11 @@ export const sokoban = {
       let abortCheckInterval = null;
 
       const gameContainer = document.createElement('pre');
+      gameContainer.className = 'terminal-game-container';
       gameContainer.style.fontFamily = 'monospace';
       gameContainer.style.lineHeight = '1.15';
       gameContainer.style.color = 'var(--text-color)';
-      shell.output.appendChild(gameContainer);
+      shell.print(gameContainer);
 
       function checkWin() {
         // Game won when all targets have boxes

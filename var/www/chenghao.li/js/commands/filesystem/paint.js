@@ -290,9 +290,7 @@ class PaintEditor {
 
   start() {
     // Hide terminal output & input
-    this.shell.output.style.display = 'none';
-    this.shell.inputLine.classList.add('hidden-input-line');
-    this.shell.body.style.overflowY = 'hidden';
+    this.shell.enterFullScreenView();
 
     // Save and reset view scrolling to top to align the full-screen layout to the viewport
     this.savedScrollTop = this.shell.body ? this.shell.body.scrollTop : 0;
@@ -303,11 +301,7 @@ class PaintEditor {
       this.shell.body.scrollLeft = 0;
     }
 
-    if (this.shell.glowBackdrops) {
-      this.shell.glowBackdrops.forEach(el => {
-        if (el) el.style.display = 'none';
-      });
-    }
+
 
     // Create container
     this.container = document.createElement('div');
@@ -348,14 +342,7 @@ class PaintEditor {
     if (this.container) this.container.remove();
 
     // Restore terminal
-    this.shell.output.style.display = 'flex';
-    this.shell.inputLine.classList.remove('hidden-input-line');
-    if (this.shell.glowBackdrops) {
-      this.shell.glowBackdrops.forEach(el => {
-        if (el) el.style.display = '';
-      });
-    }
-    this.shell.body.style.overflowY = '';
+    this.shell.exitFullScreenView();
     if (this.shell.body && typeof this.savedScrollTop === 'number') {
       this.shell.body.scrollTop = this.savedScrollTop;
     }

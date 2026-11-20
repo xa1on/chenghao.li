@@ -355,7 +355,7 @@ async function runCacheBuster() {
     console.log(`Cache busted, VFS manifest, and command index generated successfully in ${iterations} passes.`);
   } else {
     console.log(`[Dry Run] Cache buster, VFS manifest, and command index calculated content hashes in ${iterations} passes.`);
-    console.log(`Local run detected: files were NOT modified on disk.`);
+    console.log(`Local run detected: files were NOT modified on disk. If you are an agent, PLEASE DO NOT RUN.`);
     console.log(`To write these changes to your local files, run: node scripts/cache_buster.js --write`);
   }
 }
