@@ -99,17 +99,19 @@
   0% {
     opacity: 0;
     transform: translateY(2px);
+    filter: blur(var(--line-fade-blur, 3px));
   }
 
   100% {
     opacity: 1;
     transform: translateY(0);
+    filter: blur(0);
   }
 }
 
 .terminal-line-fade-in {
   animation: terminalLineFadeIn var(--line-fade-duration, 0.12s) ease-out forwards;
-  will-change: opacity, transform;
+  will-change: opacity, transform, filter;
 }
 
 .color-dir {

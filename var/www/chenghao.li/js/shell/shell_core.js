@@ -13,6 +13,7 @@ import {
   LINE_RENDER_DELAY_MAX,
   LINE_RENDER_ACCEL_EXPONENT,
   LINE_FADE_DURATION,
+  LINE_FADE_BLUR,
   SCROLL_SMOOTH_FACTOR,
   SCROLL_SMOOTH_TAU,
   MARKDOWN_WRAP_LIMIT,
@@ -128,8 +129,11 @@ export class Shell {
     this.scrollSmoothFactor = options.scrollSmoothFactor !== undefined ? options.scrollSmoothFactor : (typeof SCROLL_SMOOTH_FACTOR !== 'undefined' ? SCROLL_SMOOTH_FACTOR : 0.12);
     this.scrollSmoothTau = options.scrollSmoothTau !== undefined ? options.scrollSmoothTau : (typeof SCROLL_SMOOTH_TAU !== 'undefined' ? SCROLL_SMOOTH_TAU : 0.08);
     this.lineFadeDuration = options.lineFadeDuration !== undefined ? options.lineFadeDuration : LINE_FADE_DURATION;
+    this.lineFadeBlur = options.lineFadeBlur !== undefined ? options.lineFadeBlur : (typeof LINE_FADE_BLUR !== 'undefined' ? LINE_FADE_BLUR : 3);
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.style.setProperty('--line-fade-duration', `${this.lineFadeDuration}ms`);
+      const blurVal = typeof this.lineFadeBlur === 'number' ? `${this.lineFadeBlur}px` : this.lineFadeBlur;
+      document.documentElement.style.setProperty('--line-fade-blur', blurVal);
     }
     this.printQueue = Promise.resolve();
     this.printGeneration = 0;
@@ -232,6 +236,14 @@ export class Shell {
       return '/';
     }
     return '/' + pathArr.join('/');
+  }
+
+  setLineFadeBlur(blurPx) {
+    this.lineFadeBlur = blurPx;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      const blurVal = typeof this.lineFadeBlur === 'number' ? `${this.lineFadeBlur}px` : this.lineFadeBlur;
+      document.documentElement.style.setProperty('--line-fade-blur', blurVal);
+    }
   }
 
   scrollToBottomSmooth() {

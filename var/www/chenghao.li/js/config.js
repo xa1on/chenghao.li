@@ -19,6 +19,7 @@ export const LINE_RENDER_DELAY_MIN = 6;
 export const LINE_RENDER_DELAY_MAX = 50;
 export const LINE_RENDER_ACCEL_EXPONENT = 1.4;
 export const LINE_FADE_DURATION = 120;
+export const LINE_FADE_BLUR = 30;
 export const SCROLL_SMOOTH_FACTOR = 0.12;
 export const SCROLL_SMOOTH_TAU = 0.08;
 export const MARKDOWN_WRAP_LIMIT = 120;
