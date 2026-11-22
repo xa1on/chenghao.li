@@ -120,8 +120,8 @@
 
 .terminal-line-fade-in {
   animation:
-    terminalLineFadeIn var(--line-fade-duration, 0.12s) ease-out forwards,
-    terminalLineUnblur var(--line-blur-duration, 0.18s) ease-out forwards;
+    terminalLineFadeIn var(--line-fade-duration, 0.12s) var(--line-fade-easing, ease-out) forwards,
+    terminalLineUnblur var(--line-blur-duration, 0.18s) var(--line-blur-easing, ease-out) forwards;
 }
 
 .color-dir {

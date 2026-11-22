@@ -15,6 +15,8 @@ import {
   LINE_FADE_DURATION,
   LINE_BLUR_DURATION,
   LINE_FADE_BLUR,
+  LINE_FADE_EASING,
+  LINE_BLUR_EASING,
   SCROLL_SMOOTH_FACTOR,
   SCROLL_SMOOTH_TAU,
   MARKDOWN_WRAP_LIMIT,
@@ -132,9 +134,13 @@ export class Shell {
     this.lineFadeDuration = options.lineFadeDuration !== undefined ? options.lineFadeDuration : LINE_FADE_DURATION;
     this.lineBlurDuration = options.lineBlurDuration !== undefined ? options.lineBlurDuration : (typeof LINE_BLUR_DURATION !== 'undefined' ? LINE_BLUR_DURATION : 180);
     this.lineFadeBlur = options.lineFadeBlur !== undefined ? options.lineFadeBlur : (typeof LINE_FADE_BLUR !== 'undefined' ? LINE_FADE_BLUR : 30);
+    this.lineFadeEasing = options.lineFadeEasing !== undefined ? options.lineFadeEasing : (typeof LINE_FADE_EASING !== 'undefined' ? LINE_FADE_EASING : 'ease-out');
+    this.lineBlurEasing = options.lineBlurEasing !== undefined ? options.lineBlurEasing : (typeof LINE_BLUR_EASING !== 'undefined' ? LINE_BLUR_EASING : 'ease-out');
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.style.setProperty('--line-fade-duration', `${this.lineFadeDuration}ms`);
       document.documentElement.style.setProperty('--line-blur-duration', `${this.lineBlurDuration}ms`);
+      document.documentElement.style.setProperty('--line-fade-easing', this.lineFadeEasing);
+      document.documentElement.style.setProperty('--line-blur-easing', this.lineBlurEasing);
       const blurVal = typeof this.lineFadeBlur === 'number' ? `${this.lineFadeBlur}px` : this.lineFadeBlur;
       document.documentElement.style.setProperty('--line-fade-blur', blurVal);
     }
@@ -253,6 +259,20 @@ export class Shell {
     this.lineBlurDuration = durationMs;
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.style.setProperty('--line-blur-duration', `${this.lineBlurDuration}ms`);
+    }
+  }
+
+  setLineFadeEasing(easing) {
+    this.lineFadeEasing = easing;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.setProperty('--line-fade-easing', this.lineFadeEasing);
+    }
+  }
+
+  setLineBlurEasing(easing) {
+    this.lineBlurEasing = easing;
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.setProperty('--line-blur-easing', this.lineBlurEasing);
     }
   }
 
