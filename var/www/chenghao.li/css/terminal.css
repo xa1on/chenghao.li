@@ -118,6 +118,7 @@
   }
 }
 
+.terminal-editor,
 .terminal-line-fade-in {
   animation:
     terminalLineFadeIn var(--line-fade-duration, 0.12s) var(--line-fade-easing, ease-out) forwards,
