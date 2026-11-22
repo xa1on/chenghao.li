@@ -528,15 +528,19 @@ export class Shell {
 
       // Handle interactive item clicks (ls-item and cmd-link)
       if (this.loginState === 'LOGGED_IN' && !this.isExecutingCommand && !this.isBooting) {
-        if (target.classList.contains('ls-item')) {
+        const lsItem = target.closest('.ls-item');
+        const cmdElem = target.closest('[data-cmd], .cmd-link');
+
+        if (lsItem) {
           e.stopPropagation();
-          const type = target.getAttribute('data-type');
-          const path = target.getAttribute('data-path');
+          const type = lsItem.getAttribute('data-type');
+          const path = lsItem.getAttribute('data-path');
 
           if (path) {
             const targetPathArr = path.split('/').filter(s => s.length > 0);
             const relativePath = this.fileSystem.getRelativePath(this.currentPath, targetPathArr);
 
+            this.scrollToBottomSmooth();
             if (type === 'dir') {
               await this.handleInputSubmit(`cd ${relativePath}`);
               await this.handleInputSubmit('ls');
@@ -551,10 +555,11 @@ export class Shell {
               this.print(`ls: cannot access '${relativePath}': No such file or directory`, 'color-error');
             }
           }
-        } else if (target.classList.contains('cmd-link')) {
+        } else if (cmdElem) {
           e.stopPropagation();
-          const cmd = target.getAttribute('data-cmd');
+          const cmd = cmdElem.getAttribute('data-cmd');
           if (cmd) {
+            this.scrollToBottomSmooth();
             await this.handleInputSubmit(cmd);
           }
         }
@@ -1183,6 +1188,7 @@ export class Shell {
     if (this.loginState !== 'LOGGED_IN' || this.isExecutingCommand) return 0;
 
     this.isExecutingCommand = true;
+    this.scrollToBottomSmooth();
     this.lineEditor.historyDraft = '';
     const trimmed = val.trim();
     if (trimmed !== '') {
