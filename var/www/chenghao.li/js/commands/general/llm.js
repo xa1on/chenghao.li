@@ -70,12 +70,12 @@ export const llm = {
 
         const displayText = `[${bar}] ${pct}% - ${report.text}`;
         if (!progressLine) {
-          progressLine = shell.print(displayText, "color-dim");
+          progressLine = shell._printInstant ? shell._printInstant(displayText, "color-dim") : shell.print(displayText, "color-dim");
         } else {
           progressLine.innerHTML = displayText;
         }
 
-        shell.body.scrollTop = shell.body.scrollHeight;
+        if (shell.body) shell.body.scrollTop = shell.body.scrollHeight;
 
         if (progress === 1 || report.text.includes("Finish loading") || report.text.includes("Ready")) {
           progressLine = null; // Reset for future calls
@@ -150,8 +150,8 @@ export const llm = {
       chatHistory.push({ role: "user", content: userInput });
 
       // Run inference and stream results
-      const thinkingLine = shell.print("Working...", "color-dim");
-      const responseLine = shell.print("", "color-text");
+      const thinkingLine = await shell.print("Working...", "color-dim", { instant: true });
+      const responseLine = await shell.print("", "color-text", { instant: true });
 
       try {
         const chunks = await engine.chat.completions.create({
@@ -180,24 +180,24 @@ export const llm = {
           const text = chunk.choices[0]?.delta?.content || "";
           if (text) {
             if (!started) {
-              thinkingLine.style.display = "none";
+              if (thinkingLine?.style) thinkingLine.style.display = "none";
               started = true;
             }
             fullResponse += text;
-            responseLine.innerHTML = shell.parseMarkdown(fullResponse);
-            shell.body.scrollTop = shell.body.scrollHeight;
+            if (responseLine) responseLine.innerHTML = shell.parseMarkdown(fullResponse);
+            if (shell.body) shell.body.scrollTop = shell.body.scrollHeight;
           }
         }
 
         if (!started && !aborted) {
-          thinkingLine.style.display = "none";
+          if (thinkingLine?.style) thinkingLine.style.display = "none";
         }
 
         if (fullResponse) {
           chatHistory.push({ role: "assistant", content: fullResponse });
         }
       } catch (err) {
-        thinkingLine.style.display = "none";
+        if (thinkingLine?.style) thinkingLine.style.display = "none";
         // Don't print error if this was caused by an interrupt
         if (!shell.abortSignal) {
           shell.print(`Communication error: ${err.message}`, "color-error");
