@@ -14,6 +14,7 @@ import {
   LINE_RENDER_ACCEL_EXPONENT,
   LINE_FADE_DURATION,
   SCROLL_SMOOTH_FACTOR,
+  SCROLL_SMOOTH_TAU,
   MARKDOWN_WRAP_LIMIT,
   TAB_DOUBLE_PRESS_INTERVAL
 } from '../config.js';
@@ -125,6 +126,7 @@ export class Shell {
     this.lineRenderDelayMax = options.lineRenderDelayMax !== undefined ? options.lineRenderDelayMax : (typeof LINE_RENDER_DELAY_MAX !== 'undefined' ? LINE_RENDER_DELAY_MAX : 36);
     this.lineRenderAccelExponent = options.lineRenderAccelExponent !== undefined ? options.lineRenderAccelExponent : (typeof LINE_RENDER_ACCEL_EXPONENT !== 'undefined' ? LINE_RENDER_ACCEL_EXPONENT : 1.2);
     this.scrollSmoothFactor = options.scrollSmoothFactor !== undefined ? options.scrollSmoothFactor : (typeof SCROLL_SMOOTH_FACTOR !== 'undefined' ? SCROLL_SMOOTH_FACTOR : 0.12);
+    this.scrollSmoothTau = options.scrollSmoothTau !== undefined ? options.scrollSmoothTau : (typeof SCROLL_SMOOTH_TAU !== 'undefined' ? SCROLL_SMOOTH_TAU : 0.08);
     this.lineFadeDuration = options.lineFadeDuration !== undefined ? options.lineFadeDuration : LINE_FADE_DURATION;
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.style.setProperty('--line-fade-duration', `${this.lineFadeDuration}ms`);
@@ -138,7 +140,9 @@ export class Shell {
     this._skipHandlerAttached = false;
     this._skipHandler = null;
     this._userScrolledUp = false;
+    this.disableAutoScroll = false;
     this._autoScrollRaf = null;
+    this._lastScrollTime = null;
     this._currentScrollTop = 0;
     this._wheelHandler = null;
     this._touchStartY = null;
@@ -230,9 +234,84 @@ export class Shell {
     return '/' + pathArr.join('/');
   }
 
+  scrollToBottomSmooth() {
+    this._userScrolledUp = false;
+    this.disableAutoScroll = false;
+    this._startAutoScroll();
+  }
+
   mount() {
     if (this.isMounted) return;
     this.isMounted = true;
+
+    // Move #terminal-input out of .terminal-body to document.body so the browser never
+    // performs native un-smoothed scroll-into-view jumps when typing
+    if (this.input && typeof document !== 'undefined' && document.body && this.input.parentElement !== document.body) {
+      document.body.appendChild(this.input);
+    }
+
+    // Track scroll position continuously
+    if (this.body) {
+      let isDraggingScrollbar = false;
+
+      this.body.addEventListener('pointerdown', (e) => {
+        if (e.clientX >= this.body.clientWidth) {
+          isDraggingScrollbar = true;
+        }
+      }, { passive: true });
+
+      if (typeof window !== 'undefined') {
+        window.addEventListener('pointerup', () => {
+          isDraggingScrollbar = false;
+        }, { passive: true });
+      }
+
+      this.body.addEventListener('wheel', (e) => {
+        if (e.deltaY < 0) {
+          this._userScrolledUp = true;
+        } else if (e.deltaY > 0) {
+          const maxScroll = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
+          if ((maxScroll - this.body.scrollTop) <= 20) {
+            this._userScrolledUp = false;
+            this.disableAutoScroll = false;
+          }
+        }
+      }, { passive: true });
+
+      let touchStartY = null;
+      this.body.addEventListener('touchstart', (e) => {
+        if (e.touches && e.touches.length > 0) {
+          touchStartY = e.touches[0].clientY;
+        }
+      }, { passive: true });
+
+      this.body.addEventListener('touchmove', (e) => {
+        if (touchStartY !== null && e.touches && e.touches.length > 0) {
+          const delta = e.touches[0].clientY - touchStartY;
+          if (delta > 8) {
+            this._userScrolledUp = true;
+          } else if (delta < -8) {
+            const maxScroll = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
+            if ((maxScroll - this.body.scrollTop) <= 20) {
+              this._userScrolledUp = false;
+              this.disableAutoScroll = false;
+            }
+          }
+        }
+      }, { passive: true });
+
+      this.body.addEventListener('scroll', () => {
+        const current = this.body.scrollTop;
+        this._currentScrollTop = current;
+        const maxScroll = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
+        if ((maxScroll - current) <= 20) {
+          this._userScrolledUp = false;
+          this.disableAutoScroll = false;
+        } else if (isDraggingScrollbar) {
+          this._userScrolledUp = true;
+        }
+      }, { passive: true });
+    }
 
     // Handle deep links when user navigates history
     window.addEventListener('popstate', async () => {
@@ -284,7 +363,10 @@ export class Shell {
     };
 
     if (this.input) {
-      this.input.addEventListener('input', syncCursor);
+      this.input.addEventListener('input', () => {
+        syncCursor();
+        this.scrollToBottomSmooth();
+      });
       this.input.addEventListener('keyup', syncCursor);
       this.input.addEventListener('click', syncCursor);
       this.input.addEventListener('focus', syncCursor);
@@ -305,6 +387,7 @@ export class Shell {
             this.input.selectionStart = this.input.selectionEnd = this.input.value.length;
             syncCursor();
             this.focus();
+            this.scrollToBottomSmooth();
           }
         }
       });
@@ -315,6 +398,11 @@ export class Shell {
       this.input.addEventListener('keydown', async (e) => {
         if (e.key !== 'Tab') {
           this.tabCount = 0;
+        }
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          if (e.key.length === 1 || ['Backspace', 'Delete', 'Enter'].includes(e.key)) {
+            this.scrollToBottomSmooth();
+          }
         }
         const activeHandler = this.getActiveInputHandler();
         if (activeHandler) {
@@ -541,24 +629,39 @@ export class Shell {
   }
 
   _startAutoScroll() {
-    if (this._autoScrollRaf || typeof requestAnimationFrame === 'undefined') return;
+    if (this.disableAutoScroll || typeof requestAnimationFrame === 'undefined' || !this.body) return;
 
-    if (this._currentScrollTop === null || this._currentScrollTop === undefined) {
-      this._currentScrollTop = this.body ? this.body.scrollTop : 0;
-    }
+    this._currentScrollTop = this.body.scrollTop;
+    if (this._autoScrollRaf) return;
 
-    const easeScroll = () => {
-      if (this.body && !this._userScrolledUp) {
-        const target = this.body.scrollHeight - this.body.clientHeight;
+    this._lastScrollTime = null;
+
+    const easeScroll = (timestamp) => {
+      if (this.disableAutoScroll || !this.body) {
+        this._autoScrollRaf = null;
+        this._lastScrollTime = null;
+        return;
+      }
+
+      if (!this._userScrolledUp) {
+        const target = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
         const current = this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop;
         if (target > current) {
           const diff = target - current;
-          if (diff < 0.5) {
+          if (diff <= 0.5) {
             this._currentScrollTop = target;
             this.body.scrollTop = target;
           } else {
-            const factor = this.scrollSmoothFactor || 0.12;
-            const step = Math.max(0.5, diff * factor);
+            const now = timestamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
+            const dt = this._lastScrollTime ? Math.min((now - this._lastScrollTime) / 1000, 0.05) : 0.0166;
+            this._lastScrollTime = now;
+
+            const baseTau = this.scrollSmoothTau || 0.08;
+            const tRatio = Math.min(1, Math.max(0, (diff - 20) / 100));
+            const tau = Math.max(0.04, baseTau - tRatio * 0.035);
+            const blend = 1 - Math.exp(-dt / tau);
+
+            const step = Math.min(diff, Math.max(0.5, diff * blend));
             this._currentScrollTop = Math.min(target, current + step);
             this.body.scrollTop = this._currentScrollTop;
           }
@@ -567,24 +670,18 @@ export class Shell {
         }
       }
 
-      if (this.activePrintCount > 0) {
+      const target = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
+      const remaining = target - (this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop);
+
+      if ((this.activePrintCount > 0 || remaining > 0.5) && !this._userScrolledUp && !this.disableAutoScroll) {
         this._autoScrollRaf = requestAnimationFrame(easeScroll);
       } else {
-        // When prints have completed, ensure it finishes easing to the bottom
-        if (this.body && !this._userScrolledUp) {
-          const target = this.body.scrollHeight - this.body.clientHeight;
-          const current = this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop;
-          if (target > current && (target - current) >= 0.5) {
-            const diff = target - current;
-            const factor = this.scrollSmoothFactor || 0.12;
-            const step = Math.max(0.5, diff * factor);
-            this._currentScrollTop = Math.min(target, current + step);
-            this.body.scrollTop = this._currentScrollTop;
-            this._autoScrollRaf = requestAnimationFrame(easeScroll);
-            return;
-          }
+        if (remaining <= 0.5 && !this._userScrolledUp && !this.disableAutoScroll) {
+          this._currentScrollTop = target;
+          this.body.scrollTop = target;
         }
         this._autoScrollRaf = null;
+        this._lastScrollTime = null;
       }
     };
 
@@ -593,8 +690,11 @@ export class Shell {
 
   _stopAutoScroll() {
     if (this._autoScrollRaf) {
-      cancelAnimationFrame(this._autoScrollRaf);
+      if (typeof cancelAnimationFrame !== 'undefined') {
+        cancelAnimationFrame(this._autoScrollRaf);
+      }
       this._autoScrollRaf = null;
+      this._lastScrollTime = null;
     }
   }
 
@@ -608,55 +708,16 @@ export class Shell {
       this.skipLineAnimation = true;
       this._userScrolledUp = false;
       if (this.body) {
+        this._isAutoScrolling = true;
         this.body.scrollTop = this.body.scrollHeight;
         this._currentScrollTop = this.body.scrollTop;
-      }
-    };
-
-    this._wheelHandler = (e) => {
-      if (!this.body) return;
-      if (e.deltaY < 0) {
-        // User scrolled UP -> pause auto-scroll
-        this._userScrolledUp = true;
-      } else if (e.deltaY > 0) {
-        // User scrolled DOWN -> resume auto-scroll if near bottom
-        const atBottom = (this.body.scrollHeight - this.body.scrollTop - this.body.clientHeight) <= 30;
-        if (atBottom) {
-          this._userScrolledUp = false;
-        }
-      }
-      this._currentScrollTop = this.body.scrollTop;
-    };
-
-    this._touchStartHandler = (e) => {
-      if (e.touches && e.touches.length > 0) {
-        this._touchStartY = e.touches[0].clientY;
-      }
-    };
-
-    this._touchMoveHandler = (e) => {
-      if (this._touchStartY !== null && e.touches && e.touches.length > 0) {
-        const delta = e.touches[0].clientY - this._touchStartY;
-        if (delta > 8) {
-          // Dragging down moves content up (scroll up)
-          this._userScrolledUp = true;
-        } else if (delta < -8 && this.body) {
-          const atBottom = (this.body.scrollHeight - this.body.scrollTop - this.body.clientHeight) <= 30;
-          if (atBottom) {
-            this._userScrolledUp = false;
-          }
-        }
+        this._isAutoScrolling = false;
       }
     };
 
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this._skipHandler, true);
       window.addEventListener('mousedown', this._skipHandler, true);
-    }
-    if (this.body) {
-      this.body.addEventListener('wheel', this._wheelHandler, { passive: true });
-      this.body.addEventListener('touchstart', this._touchStartHandler, { passive: true });
-      this.body.addEventListener('touchmove', this._touchMoveHandler, { passive: true });
     }
     this._startAutoScroll();
   }
@@ -669,22 +730,7 @@ export class Shell {
       window.removeEventListener('mousedown', this._skipHandler, true);
       this._skipHandler = null;
     }
-    if (this.body) {
-      if (this._wheelHandler) {
-        this.body.removeEventListener('wheel', this._wheelHandler, { passive: true });
-        this._wheelHandler = null;
-      }
-      if (this._touchStartHandler) {
-        this.body.removeEventListener('touchstart', this._touchStartHandler, { passive: true });
-        this._touchStartHandler = null;
-      }
-      if (this._touchMoveHandler) {
-        this.body.removeEventListener('touchmove', this._touchMoveHandler, { passive: true });
-        this._touchMoveHandler = null;
-      }
-    }
     this.skipLineAnimation = false;
-    this._userScrolledUp = false;
   }
 
   _delay(ms) {
@@ -715,7 +761,9 @@ export class Shell {
     if (this.queueLineIndex !== undefined) {
       this.queueLineIndex += this.countPrintLines(htmlContent);
     }
-    if (this.body) this.body.scrollTop = this.body.scrollHeight;
+    if (this.body && !this.disableAutoScroll && !this._userScrolledUp) {
+      this._startAutoScroll();
+    }
     return line;
   }
 
@@ -958,80 +1006,82 @@ export class Shell {
     audio?.playBell?.();
   }
 
-      async readInput(promptText) {
-        await this.printQueue;
-        return new Promise((resolve) => {
-          const originalPrefixHTML = this.promptPrefix.innerHTML;
-          if (this.input) this.input.disabled = false;
-          if (this.inputLine) {
-            this.inputLine.style.display = '';
-            this.inputLine.style.visibility = 'visible';
-            this.inputLine.classList.remove('terminal-line-fade-in');
-            void this.inputLine.offsetWidth;
-            this.attachFadeIn(this.inputLine);
-          }
-          this.promptPrefix.innerHTML = promptText;
-          if (this.input) this.input.value = '';
-
-          const cleanup = () => {
-            if (this.input) this.input.disabled = true;
-            if (this.inputLine) {
-              this.inputLine.style.display = 'none';
-              this.inputLine.style.visibility = 'hidden';
-              this.inputLine.classList.remove('terminal-line-fade-in');
-            }
-            this.promptPrefix.innerHTML = originalPrefixHTML;
-            this.activeInputResolver = null;
-            this.activeInputAbortResolver = null;
-          };
-
-          this.activeInputResolver = (val) => {
-            this.print(`${promptText}${escapeHTML(val)}`, 'color-text', { instant: true, fade: false });
-            cleanup();
-            resolve(val);
-          };
-
-          this.activeInputAbortResolver = () => {
-            this.print(`${promptText}${escapeHTML(this.input ? this.input.value : '')}^C`, 'color-text', { instant: true, fade: false });
-            cleanup();
-            resolve(null);
-          };
-
-          this.updateInputDisplay('');
-          this.focus();
-          this._startAutoScroll();
-        });
+  async readInput(promptText) {
+    await this.printQueue;
+    return new Promise((resolve) => {
+      const originalPrefixHTML = this.promptPrefix.innerHTML;
+      if (this.input) this.input.disabled = false;
+      if (this.inputLine) {
+        this.inputLine.style.display = '';
+        this.inputLine.style.visibility = 'visible';
+        this.inputLine.classList.remove('terminal-line-fade-in');
+        void this.inputLine.offsetWidth;
+        this.attachFadeIn(this.inputLine);
       }
+      this.promptPrefix.innerHTML = promptText;
+      if (this.input) this.input.value = '';
 
-      showPromptLine() {
-        if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.getActiveInputHandler()) {
-          return;
-        }
-        this.updatePrompt();
-        if (this.inputLine) {
-          this.inputLine.style.display = '';
-          this.inputLine.style.visibility = 'visible';
-          this.inputLine.classList.remove('terminal-line-fade-in');
-          void this.inputLine.offsetWidth;
-          this.attachFadeIn(this.inputLine);
-        }
-        if (this.input) {
-          this.input.disabled = false;
-        }
-        this.focus();
-        this._startAutoScroll();
-      }
-
-      hidePromptLine() {
+      const cleanup = () => {
+        if (this.input) this.input.disabled = true;
         if (this.inputLine) {
           this.inputLine.style.display = 'none';
           this.inputLine.style.visibility = 'hidden';
           this.inputLine.classList.remove('terminal-line-fade-in');
         }
-        if (this.input) {
-          this.input.disabled = true;
-        }
-      }
+        this.promptPrefix.innerHTML = originalPrefixHTML;
+        this.activeInputResolver = null;
+        this.activeInputAbortResolver = null;
+      };
+
+      this.activeInputResolver = (val) => {
+        this.print(`${promptText}${escapeHTML(val)}`, 'color-text', { instant: true, fade: false });
+        cleanup();
+        resolve(val);
+      };
+
+      this.activeInputAbortResolver = () => {
+        this.print(`${promptText}${escapeHTML(this.input ? this.input.value : '')}^C`, 'color-text', { instant: true, fade: false });
+        cleanup();
+        resolve(null);
+      };
+
+      this.updateInputDisplay('');
+      this.focus();
+      this._startAutoScroll();
+    });
+  }
+
+  showPromptLine() {
+    if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.getActiveInputHandler()) {
+      return;
+    }
+    this.updatePrompt();
+    if (this.inputLine) {
+      this.inputLine.style.display = '';
+      this.inputLine.style.visibility = 'visible';
+      this.inputLine.classList.remove('terminal-line-fade-in');
+      void this.inputLine.offsetWidth;
+      this.attachFadeIn(this.inputLine);
+    }
+    if (this.input) {
+      this.input.disabled = false;
+    }
+    this.focus({ preventScroll: true });
+    if (!this.disableAutoScroll && !this._userScrolledUp) {
+      this._startAutoScroll();
+    }
+  }
+
+  hidePromptLine() {
+    if (this.inputLine) {
+      this.inputLine.style.display = 'none';
+      this.inputLine.style.visibility = 'hidden';
+      this.inputLine.classList.remove('terminal-line-fade-in');
+    }
+    if (this.input) {
+      this.input.disabled = true;
+    }
+  }
 
   parseMarkdown(text, basePathArr = [], wrapLimit = MARKDOWN_WRAP_LIMIT) {
     return parseMarkdown(text, this.fileSystem ? this.fileSystem.root : {}, basePathArr, wrapLimit);
@@ -1051,11 +1101,13 @@ export class Shell {
     this._currentScrollTop = 0;
     this.queueTotalLines = 0;
     this.queueLineIndex = 0;
+    this._userScrolledUp = false;
+    this.disableAutoScroll = false;
   }
 
-  focus() {
+  focus(options = {}) {
     if (this.input) {
-      this.input.focus();
+      this.input.focus({ preventScroll: true, ...options });
     }
   }
 
@@ -1085,7 +1137,7 @@ export class Shell {
       return 0;
     }
 
-        if (this.isExecutingCommand) return 0;
+    if (this.isExecutingCommand) return 0;
     return await this.handleInputSubmit(val);
   }
 
@@ -1784,6 +1836,12 @@ export class Shell {
 
     const { initialPath, initialCommand } = this.getInitialDeepLink();
 
+    if (initialCommand || (initialPath && initialPath !== '~')) {
+      this.disableAutoScroll = true;
+      if (this.body) this.body.scrollTop = 0;
+      this._currentScrollTop = 0;
+    }
+
     audio.startHum();
 
     const sshCmd = `ssh ${this.currentUsername}@${this.hostname}`;
@@ -1839,6 +1897,11 @@ export class Shell {
 
     await this.printQueue;
     this.isBooting = false;
+
+    if (initialCommand || (initialPath && initialPath !== '~')) {
+      this.disableAutoScroll = false;
+      this._userScrolledUp = true;
+    }
 
     this.showPromptLine();
     this.updateBrowserUrl(this.formatDisplayPath(), initialCommand);

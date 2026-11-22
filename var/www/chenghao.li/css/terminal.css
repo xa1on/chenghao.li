@@ -100,6 +100,7 @@
     opacity: 0;
     transform: translateY(2px);
   }
+
   100% {
     opacity: 1;
     transform: translateY(0);
@@ -259,7 +260,7 @@
   margin-left: 1ch;
 }
 
-.prompt-prefix:empty + .input-container {
+.prompt-prefix:empty+.input-container {
   margin-left: 0;
 }
 
@@ -319,10 +320,11 @@
 
 /* Hidden Real Input Field */
 #terminal-input {
-  position: absolute;
-  left: -9999px;
-  width: 100px;
-  height: 20px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
   opacity: 0;
   border: none;
   outline: none;
@@ -333,6 +335,7 @@
   font-size: 16px;
   /* Prevents auto-zoom on iOS */
   pointer-events: none;
+  z-index: -1;
 }
 
 
