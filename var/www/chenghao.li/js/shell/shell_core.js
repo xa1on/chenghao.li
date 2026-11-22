@@ -728,7 +728,6 @@ export class Shell {
   _ensureSkipListeners() {
     if (this._skipHandlerAttached) return;
     this._skipHandlerAttached = true;
-    this.skipLineAnimation = false;
 
     this._skipHandler = (e) => {
       if (e.type === 'keydown' && (e.ctrlKey || e.metaKey || e.altKey)) return;
@@ -746,6 +745,7 @@ export class Shell {
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this._skipHandler, true);
       window.addEventListener('mousedown', this._skipHandler, true);
+      window.addEventListener('pointerdown', this._skipHandler, true);
     }
     this._startAutoScroll();
   }
@@ -756,9 +756,9 @@ export class Shell {
     if (this._skipHandler && typeof window !== 'undefined') {
       window.removeEventListener('keydown', this._skipHandler, true);
       window.removeEventListener('mousedown', this._skipHandler, true);
+      window.removeEventListener('pointerdown', this._skipHandler, true);
       this._skipHandler = null;
     }
-    this.skipLineAnimation = false;
   }
 
   _delay(ms) {
@@ -889,19 +889,8 @@ export class Shell {
   }
 
   attachFadeIn(el) {
-    if (!el) return;
+    if (!el || this.skipLineAnimation) return;
     el.classList.add('terminal-line-fade-in');
-    const cleanup = (e) => {
-      if (e && e.animationName && e.animationName !== 'terminalLineUnblur') return;
-      el.removeEventListener('animationend', cleanup);
-      el.classList.remove('terminal-line-fade-in');
-    };
-    el.addEventListener('animationend', cleanup);
-    const maxDuration = Math.max(this.lineFadeDuration || 120, this.lineBlurDuration || 180);
-    setTimeout(() => {
-      el.removeEventListener('animationend', cleanup);
-      el.classList.remove('terminal-line-fade-in');
-    }, maxDuration + 50);
   }
 
   enterFullScreenView() {
@@ -987,7 +976,7 @@ export class Shell {
       for (const child of children) {
         if (generation !== null && generation !== (this.printGeneration || 0)) return container;
         child.style.display = '';
-        if (options.fade !== false && !options.instant) {
+        if (options.fade !== false && !options.instant && !this.skipLineAnimation) {
           this.attachFadeIn(child);
         }
         const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
@@ -1005,7 +994,7 @@ export class Shell {
     if (lines.length <= 1) {
       const lineEl = document.createElement('div');
       if (className) lineEl.className = className;
-      if (options.fade !== false && !options.instant) {
+      if (options.fade !== false && !options.instant && !this.skipLineAnimation) {
         this.attachFadeIn(lineEl);
       }
       lineEl.innerHTML = strContent || '&nbsp;';
@@ -1029,7 +1018,7 @@ export class Shell {
     for (const line of lines) {
       if (generation !== null && generation !== (this.printGeneration || 0)) return container;
       const lineEl = document.createElement('div');
-      if (options.fade !== false && !options.instant) {
+      if (options.fade !== false && !options.instant && !this.skipLineAnimation) {
         this.attachFadeIn(lineEl);
       }
       lineEl.innerHTML = line || '&nbsp;';
@@ -1100,6 +1089,7 @@ export class Shell {
   }
 
   showPromptLine() {
+    this.skipLineAnimation = false;
     if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.getActiveInputHandler()) {
       return;
     }
@@ -1225,6 +1215,7 @@ export class Shell {
     if (this.loginState !== 'LOGGED_IN' || this.isExecutingCommand) return 0;
 
     this.isExecutingCommand = true;
+    this.skipLineAnimation = false;
     this.scrollToBottomSmooth();
     this.lineEditor.historyDraft = '';
     const trimmed = val.trim();
@@ -1966,6 +1957,7 @@ export class Shell {
 
     await this.printQueue;
     this.isBooting = false;
+    this.skipLineAnimation = false;
 
     if (initialCommand || (initialPath && initialPath !== '~')) {
       this.disableAutoScroll = false;

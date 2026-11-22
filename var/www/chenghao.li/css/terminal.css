@@ -17,6 +17,9 @@
   z-index: 5;
   transform: translate3d(0, 0, 0);
   will-change: transform;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 /* Custom Scrollbar for Webkit */
@@ -98,12 +101,10 @@
 @keyframes terminalLineFadeIn {
   0% {
     opacity: 0;
-    transform: translateY(2px);
   }
 
   100% {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 
@@ -121,7 +122,6 @@
   animation:
     terminalLineFadeIn var(--line-fade-duration, 0.12s) ease-out forwards,
     terminalLineUnblur var(--line-blur-duration, 0.18s) ease-out forwards;
-  will-change: opacity, transform, filter;
 }
 
 .color-dir {
