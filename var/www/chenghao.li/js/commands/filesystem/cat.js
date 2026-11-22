@@ -61,15 +61,16 @@ export const cat = {
           const content = await shell.fileSystem.readFile(resolved);
           const data = JSON.parse(content);
           if (data && typeof data.width === 'number' && typeof data.height === 'number' && Array.isArray(data.cells)) {
-            let html = '<pre style="font-family: \'Fira Code\', monospace; line-height: 1.2; letter-spacing: 0; font-size: 14px; margin: 10px 0; white-space: pre; overflow-x: auto; border: none; background: transparent; padding: 0;">';
+            let html = '<div class="terminal-art" style="font-family: \'Fira Code\', monospace; line-height: 1; letter-spacing: 0; font-size: 14px; margin: 10px 0; white-space: pre; overflow-x: auto; border: none; background: transparent; padding: 0;">';
             let idx = 0;
             for (let y = 0; y < data.height; y++) {
+              let rowHtml = '<div style="line-height: 1; margin: 0; padding: 0; min-height: 1em;">';
               let currentClass = null;
               let currentSpanText = '';
 
               const flushSpan = () => {
                 if (currentSpanText) {
-                  html += `<span class="${currentClass}">${currentSpanText}</span>`;
+                  rowHtml += `<span class="${currentClass}">${currentSpanText}</span>`;
                   currentSpanText = '';
                 }
               };
@@ -91,11 +92,10 @@ export const cat = {
                 }
               }
               flushSpan();
-              if (y < data.height - 1) {
-                html += '\n';
-              }
+              rowHtml += '</div>';
+              html += rowHtml;
             }
-            html += '</pre>';
+            html += '</div>';
             shell.print(html);
             continue;
           }

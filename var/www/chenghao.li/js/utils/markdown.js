@@ -189,7 +189,79 @@ function renderTextTable(tableLines, vfs = {}, basePathArr = []) {
     outputRows.push(rowParts.join(spacing));
   }
 
-  return `<pre class="markdown-table-text">${outputRows.join('\n')}</pre>`;
+  return outputRows.map(r => `<div class="markdown-table-row" style="white-space: pre; font-family: inherit;">${r}</div>`).join('');
+}
+
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+
+export function wrapHtmlLines(html, limit = MARKDOWN_WRAP_LIMIT) {
+  if (!limit || limit <= 0) return `<div>${html}</div>`;
+  const segments = html.split(/<br\s*\/?>/i);
+  const resultDivs = [];
+
+  for (const segment of segments) {
+    if (!segment.trim()) {
+      resultDivs.push('<div>&nbsp;</div>');
+      continue;
+    }
+
+    const tokenRegex = /(<[^>]+>|[^<>\s]+|\s+)/g;
+    const tokens = segment.match(tokenRegex) || [segment];
+
+    let currentLineHtml = '';
+    let currentLineVisibleLen = 0;
+    const openTags = [];
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (!token) continue;
+
+      if (token.startsWith('<') && token.endsWith('>')) {
+        currentLineHtml += token;
+        const tagMatch = token.match(/^<\/?([a-zA-Z0-9]+)/);
+        if (tagMatch) {
+          const tagName = tagMatch[1].toLowerCase();
+          if (!VOID_TAGS.has(tagName) && !token.endsWith('/>')) {
+            if (token.startsWith('</')) {
+              for (let j = openTags.length - 1; j >= 0; j--) {
+                if (openTags[j].tag === tagName) {
+                  openTags.splice(j, 1);
+                  break;
+                }
+              }
+            } else {
+              openTags.push({ tag: tagName, full: token });
+            }
+          }
+        }
+      } else if (/^\s+$/.test(token)) {
+        if (currentLineVisibleLen > 0) {
+          currentLineHtml += ' ';
+          currentLineVisibleLen += 1;
+        }
+      } else {
+        const unescaped = token.replace(/&[#a-zA-Z0-9]+;/g, 'x');
+        const wordLen = unescaped.length;
+        if (currentLineVisibleLen > 0 && currentLineVisibleLen + wordLen > limit) {
+          const closeSuffix = openTags.slice().reverse().map(t => '</' + t.tag + '>').join('');
+          resultDivs.push('<div>' + currentLineHtml.trimEnd() + closeSuffix + '</div>');
+          const openPrefix = openTags.map(t => t.full).join('');
+          currentLineHtml = openPrefix + token;
+          currentLineVisibleLen = wordLen;
+        } else {
+          currentLineHtml += token;
+          currentLineVisibleLen += wordLen;
+        }
+      }
+    }
+
+    if (currentLineHtml.trim()) {
+      const closeSuffix = openTags.slice().reverse().map(t => '</' + t.tag + '>').join('');
+      resultDivs.push('<div>' + currentLineHtml.trimEnd() + closeSuffix + '</div>');
+    }
+  }
+
+  return resultDivs.join('');
 }
 
 
@@ -331,8 +403,7 @@ export function parseMarkdown(text, vfs = {}, basePathArr = [], wrapLimit = MARK
         return '<div>&nbsp;</div>';
       }
       case 'code': {
-        const escapedCode = block.lines.map(l => escapeHTML(l)).join('\n');
-        return `<pre class="markdown-code-block"><code>${escapedCode}</code></pre>`;
+        return block.lines.map(l => `<div class="markdown-code-line" style="white-space: pre; font-family: inherit;"><code>${escapeHTML(l) || '&nbsp;'}</code></div>`).join('');
       }
       case 'table': {
         return renderTextTable(block.lines, vfs, basePathArr);
@@ -344,14 +415,23 @@ export function parseMarkdown(text, vfs = {}, basePathArr = [], wrapLimit = MARK
             const indentLen = listMatch[1].replace(/\t/g, '  ').length;
             const marker = listMatch[2] + listMatch[3];
             const pad = indentLen + marker.length;
-            return `<div style="padding-left: ${pad}ch; text-indent: -${marker.length}ch;">${marker}${parseInline(listMatch[4], vfs, basePathArr)}</div>`;
+            const parsedContent = parseInline(listMatch[4], vfs, basePathArr);
+            const wrapped = wrapHtmlLines(parsedContent, wrapLimit ? Math.max(20, wrapLimit - pad) : 0);
+            const divRegex = /<div>(.*?)<\/div>/g;
+            let subIdx = 0;
+            return wrapped.replace(divRegex, (match, inner) => {
+              if (subIdx++ === 0) {
+                return `<div style="padding-left: ${pad}ch; text-indent: -${marker.length}ch;">${marker}${inner}</div>`;
+              }
+              return `<div style="padding-left: ${pad}ch;">${inner}</div>`;
+            });
           }
           const leadMatch = line.match(/^(\s+)(.*)$/);
           if (leadMatch) {
             const pad = leadMatch[1].replace(/\t/g, '  ').length;
             return `<div style="padding-left: ${pad}ch;">${parseInline(leadMatch[2], vfs, basePathArr)}</div>`;
           }
-          return `<div>${parseInline(line, vfs, basePathArr)}</div>`;
+          return wrapHtmlLines(parseInline(line, vfs, basePathArr), wrapLimit);
         }).join('');
       }
       case 'paragraph': {
@@ -370,7 +450,7 @@ export function parseMarkdown(text, vfs = {}, basePathArr = [], wrapLimit = MARK
             paragraphText += '<br>';
           }
         }
-        return `<div>${parseInline(paragraphText, vfs, basePathArr)}</div>`;
+        return wrapHtmlLines(parseInline(paragraphText, vfs, basePathArr), wrapLimit);
       }
       default:
         return '';

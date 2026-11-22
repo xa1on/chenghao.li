@@ -733,6 +733,7 @@ export class Shell {
     this._skipHandler = (e) => {
       if (e.type === 'keydown' && (e.ctrlKey || e.metaKey || e.altKey)) return;
       this.skipLineAnimation = true;
+      this.completeActiveAnimations();
       this._userScrolledUp = false;
       if (this.body) {
         this._isAutoScrolling = true;
@@ -812,11 +813,11 @@ export class Shell {
   }
 
   getLineDelay(index = 0, total = 1) {
-    if (total <= 2) {
-      return this.lineRenderDelayMin;
-    }
     const minDelay = this.lineRenderDelayMin;
     const maxDelay = this.lineRenderDelayMax;
+    if (total <= 1) {
+      return maxDelay;
+    }
     if (minDelay >= maxDelay) {
       return minDelay;
     }
@@ -876,6 +877,17 @@ export class Shell {
     return queued;
   }
 
+  completeActiveAnimations() {
+    if (this.output) {
+      this.output.querySelectorAll('.terminal-line-fade-in').forEach(el => {
+        el.classList.remove('terminal-line-fade-in');
+      });
+    }
+    if (this.inputLine) {
+      this.inputLine.classList.remove('terminal-line-fade-in');
+    }
+  }
+
   attachFadeIn(el) {
     if (!el) return;
     el.classList.add('terminal-line-fade-in');
@@ -893,10 +905,8 @@ export class Shell {
   }
 
   enterFullScreenView() {
+    this.completeActiveAnimations();
     if (this.output) {
-      this.output.querySelectorAll('.terminal-line-fade-in').forEach(el => {
-        el.classList.remove('terminal-line-fade-in');
-      });
       this.output.style.display = 'none';
     }
     if (this.inputLine) {
@@ -913,10 +923,8 @@ export class Shell {
   }
 
   exitFullScreenView() {
+    this.completeActiveAnimations();
     if (this.output) {
-      this.output.querySelectorAll('.terminal-line-fade-in').forEach(el => {
-        el.classList.remove('terminal-line-fade-in');
-      });
       this.output.style.display = 'flex';
     }
     if (this.inputLine) {
@@ -1003,7 +1011,12 @@ export class Shell {
       lineEl.innerHTML = strContent || '&nbsp;';
       this.output.appendChild(lineEl);
       this._trimOutput();
-      if (this.queueLineIndex !== undefined) this.queueLineIndex++;
+      const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
+      const total = this.queueTotalLines || 1;
+      const delay = this.getLineDelay(idx, total);
+      if (!this.skipLineAnimation && delay > 0 && options.fade !== false && !options.instant) {
+        await this._delay(delay);
+      }
       return lineEl;
     }
 
@@ -1118,8 +1131,21 @@ export class Shell {
     }
   }
 
-  parseMarkdown(text, basePathArr = [], wrapLimit = MARKDOWN_WRAP_LIMIT) {
-    return parseMarkdown(text, this.fileSystem ? this.fileSystem.root : {}, basePathArr, wrapLimit);
+  getTerminalColumns() {
+    if (typeof window !== 'undefined' && this.body) {
+      const clientWidth = this.body.clientWidth || window.innerWidth || 800;
+      const availableWidth = Math.max(300, clientWidth - 60);
+      const cols = Math.floor(availableWidth / 9.6);
+      return Math.max(30, Math.min(cols, MARKDOWN_WRAP_LIMIT));
+    }
+    return MARKDOWN_WRAP_LIMIT;
+  }
+
+  parseMarkdown(text, basePathArr = [], wrapLimit) {
+    const effectiveLimit = typeof wrapLimit === 'number' && wrapLimit > 0
+      ? wrapLimit
+      : this.getTerminalColumns();
+    return parseMarkdown(text, this.fileSystem ? this.fileSystem.root : {}, basePathArr, effectiveLimit);
   }
 
   escapeHTML(text) {
@@ -1158,6 +1184,17 @@ export class Shell {
       this.inputDisplay.textContent = '';
       this.input.value = '';
     }
+  }
+
+  formatCommandLine(cmdStr) {
+    const trimmed = (cmdStr || '').trim();
+    const commentIdx = findCommentIndex(trimmed);
+    if (commentIdx !== -1) {
+      const commandPartStr = trimmed.slice(0, commentIdx);
+      const commentPartStrFull = trimmed.slice(commentIdx);
+      return escapeHTML(commandPartStr) + `<span class="color-dim">${escapeHTML(commentPartStrFull)}</span>`;
+    }
+    return escapeHTML(trimmed);
   }
 
   async submit() {
@@ -1201,7 +1238,7 @@ export class Shell {
     this.hidePromptLine();
 
     try {
-      const code = await this.executeCommand(val);
+      const code = await this.executeCommand(val, true);
       await this.printQueue;
       return code;
     } catch (err) {
@@ -1221,7 +1258,8 @@ export class Shell {
     let trimmed = cmdStr.trim();
     if (trimmed === '') {
       if (echoPrompt) {
-        this.print(this.getPromptHtml(), 'color-text', { instant: true, fade: false });
+        const fadePrompt = Boolean(this.isBooting);
+        this.print(this.getPromptHtml(), 'color-text', { fade: fadePrompt, instant: !fadePrompt });
       }
       return 0;
     }
@@ -1243,7 +1281,7 @@ export class Shell {
       }
       if (expanded) {
         this.commandHistory[this.commandHistory.length - 1] = trimmed;
-        this.print(this.escapeHTML(trimmed), 'color-dim', { instant: true, fade: false });
+        this.print(this.escapeHTML(trimmed), 'color-dim', { fade: false, instant: true });
       }
     }
 
@@ -1284,17 +1322,12 @@ export class Shell {
     const displayPath = this.formatDisplayPath();
 
     const commentIdx = findCommentIndex(trimmed);
-    let commandPart = trimmed;
-    let printedLine = escapeHTML(trimmed);
-    if (commentIdx !== -1) {
-      const commandPartStr = trimmed.slice(0, commentIdx);
-      const commentPartStrFull = trimmed.slice(commentIdx);
-      printedLine = escapeHTML(commandPartStr) + `<span class="color-dim">${escapeHTML(commentPartStrFull)}</span>`;
-      commandPart = commandPartStr.trim();
-    }
+    const commandPart = (commentIdx !== -1 ? trimmed.slice(0, commentIdx) : trimmed).trim();
+    const printedLine = this.formatCommandLine(trimmed);
 
     if (echoPrompt) {
-      this.print(`${this.getPromptHtml()} ${printedLine}`, 'color-text', { instant: true, fade: false });
+      const fadePrompt = Boolean(this.isBooting);
+      this.print(`${this.getPromptHtml()} ${printedLine}`, 'color-text', { fade: fadePrompt, instant: !fadePrompt });
     }
 
     if (commandPart === '') return 0;
@@ -1881,7 +1914,7 @@ export class Shell {
     audio.startHum();
 
     const sshCmd = `ssh ${this.currentUsername}@${this.hostname}`;
-    this.print(`<span class="color-accent">${this.localPrompt}</span> ${sshCmd}`, 'color-text', { instant: true });
+    this.print(`<span class="color-accent">${this.localPrompt}</span> ${sshCmd}`, 'color-text');
 
     if (this.onConnect) {
       await this.onConnect(this);
