@@ -1847,7 +1847,7 @@ export class Shell {
       }
     }
 
-    const resolvedInitialPath = isHome ? (cleanPath ? '~/' + cleanPath : '~') : (cleanPath ? '/' + cleanPath : '');
+    const resolvedInitialPath = isHome ? (cleanPath ? '~/' + cleanPath : '~') : (cleanPath ? '/' + cleanPath : '/');
     this.updateBrowserUrl(resolvedInitialPath || (isHome ? '~' : '/'), initialCommand);
 
     return {

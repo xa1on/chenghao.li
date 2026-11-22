@@ -61,10 +61,10 @@ export const cat = {
           const content = await shell.fileSystem.readFile(resolved);
           const data = JSON.parse(content);
           if (data && typeof data.width === 'number' && typeof data.height === 'number' && Array.isArray(data.cells)) {
-            let html = '<div class="terminal-art" style="font-family: \'Fira Code\', monospace; line-height: 1; letter-spacing: 0; font-size: 14px; margin: 10px 0; white-space: pre; overflow-x: auto; border: none; background: transparent; padding: 0;">';
+            let html = '<div class="terminal-art" style="white-space: pre; overflow-x: auto;">';
             let idx = 0;
             for (let y = 0; y < data.height; y++) {
-              let rowHtml = '<div style="line-height: 1; margin: 0; padding: 0; min-height: 1em;">';
+              let rowHtml = '<div style="white-space: pre;">';
               let currentClass = null;
               let currentSpanText = '';
 
