@@ -169,3 +169,29 @@
   border: 1px solid var(--dim-color);
   border-radius: 4px;
 }
+
+/* ==========================================
+   FPS Counter (Green Display Aligned with Terminal)
+   ========================================== */
+.fps-counter {
+  position: fixed;
+  top: 30px;
+  right: 30px;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.2;
+  color: #7ee787;
+  text-shadow: 0 0 5px rgb(from #7ee787 r g b / 0.4);
+  pointer-events: none;
+  user-select: none;
+  z-index: 1002;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .fps-counter {
+    top: 16px;
+    right: 16px;
+    font-size: 0.9rem;
+  }
+}

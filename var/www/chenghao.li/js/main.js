@@ -1,7 +1,7 @@
 import { FileSystem } from './fs.js';
 import { Shell } from './shell.js';
 import { commands } from '../gen/commands.js';
-import { HOSTNAME, DEFAULT_USERNAME, HOME_PATH } from './config.js';
+import { HOSTNAME, DEFAULT_USERNAME, HOME_PATH, SHOW_FPS_COUNTER } from './config.js';
 
 // Instantiate FileSystem and Shell contexts
 const fileSystem = new FileSystem();
@@ -64,3 +64,27 @@ System information at ${currentTimestamp}:
 // Initialize event listeners and start shell lifecycle
 shell.mount();
 shell.startConnection();
+
+// Tiny Green FPS Counter (number only)
+if (SHOW_FPS_COUNTER) {
+  let fpsEl = document.getElementById('fps-counter');
+  if (!fpsEl) {
+    fpsEl = document.createElement('div');
+    fpsEl.id = 'fps-counter';
+    fpsEl.className = 'fps-counter';
+    fpsEl.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(fpsEl);
+  }
+  let frameCount = 0;
+  let lastTime = performance.now();
+  const updateFps = (now) => {
+    frameCount++;
+    if (now - lastTime >= 500) {
+      fpsEl.textContent = Math.round((frameCount * 1000) / (now - lastTime));
+      frameCount = 0;
+      lastTime = now;
+    }
+    requestAnimationFrame(updateFps);
+  };
+  requestAnimationFrame(updateFps);
+}
