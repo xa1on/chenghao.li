@@ -11,6 +11,8 @@ import {
   ENABLE_LINE_ANIMATION,
   ENABLE_LINE_FADE,
   ENABLE_LINE_BLUR,
+  ENABLE_GLOW,
+  ENABLE_SMOOTH_SCROLL,
   LINE_RENDER_DELAY,
   LINE_RENDER_EASING,
   LINE_FADE_DURATION,
@@ -163,6 +165,13 @@ export class Shell {
     this.enableLineAnimation = options.enableLineAnimation !== undefined ? options.enableLineAnimation : (typeof ENABLE_LINE_ANIMATION !== 'undefined' ? ENABLE_LINE_ANIMATION : true);
     this.enableLineFade = options.enableLineFade !== undefined ? options.enableLineFade : (typeof ENABLE_LINE_FADE !== 'undefined' ? ENABLE_LINE_FADE : true);
     this.enableLineBlur = options.enableLineBlur !== undefined ? options.enableLineBlur : (typeof ENABLE_LINE_BLUR !== 'undefined' ? ENABLE_LINE_BLUR : true);
+    this.enableGlow = options.enableGlow !== undefined ? options.enableGlow : (typeof ENABLE_GLOW !== 'undefined' ? ENABLE_GLOW : true);
+    this.enableSmoothScroll = options.enableSmoothScroll !== undefined ? options.enableSmoothScroll : (typeof ENABLE_SMOOTH_SCROLL !== 'undefined' ? ENABLE_SMOOTH_SCROLL : true);
+    if (!this.enableGlow && this.glowBackdrops) {
+      this.glowBackdrops.forEach(el => {
+        if (el) el.style.display = 'none';
+      });
+    }
     if (!this.enableLineAnimation) {
       this.enableLineFade = false;
       this.enableLineBlur = false;
@@ -196,6 +205,10 @@ export class Shell {
     this._autoScrollRaf = null;
     this._lastScrollTime = null;
     this._currentScrollTop = 0;
+    this._scrollTarget = 0;
+    this._cachedClientHeight = 0;
+    this._isProgrammaticScroll = false;
+    this._syncGlowBackdrop = null;
     this._wheelHandler = null;
     this._touchStartY = null;
     this._touchMoveHandler = null;
@@ -340,6 +353,25 @@ export class Shell {
     }
   }
 
+  setGlow(enabled) {
+    this.enableGlow = Boolean(enabled);
+    if (this.glowBackdrops) {
+      this.glowBackdrops.forEach(el => {
+        if (el) {
+          el.style.display = this.enableGlow ? '' : 'none';
+          if (!this.enableGlow) el.innerHTML = '';
+        }
+      });
+    }
+    if (this.enableGlow) {
+      this.setupGlowBackdrop();
+    }
+  }
+
+  setSmoothScroll(enabled) {
+    this.enableSmoothScroll = Boolean(enabled);
+  }
+
   setLineRenderEasing(easing) {
     this.lineRenderEasing = easing;
     this._lineRenderEasingFn = parseCubicBezier(easing);
@@ -371,6 +403,12 @@ export class Shell {
     // Track scroll position continuously
     if (this.body) {
       let isDraggingScrollbar = false;
+      this._cachedClientHeight = this.body.clientHeight;
+      if (typeof window !== 'undefined') {
+        window.addEventListener('resize', () => {
+          if (this.body) this._cachedClientHeight = this.body.clientHeight;
+        }, { passive: true });
+      }
 
       this.body.addEventListener('pointerdown', (e) => {
         if (e.clientX >= this.body.clientWidth) {
@@ -419,6 +457,7 @@ export class Shell {
       }, { passive: true });
 
       this.body.addEventListener('scroll', () => {
+        if (this._isProgrammaticScroll) return;
         const current = this.body.scrollTop;
         this._currentScrollTop = current;
         const maxScroll = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
@@ -664,6 +703,17 @@ export class Shell {
   }
 
   setupGlowBackdrop() {
+    if (!this.enableGlow) {
+      if (this.glowBackdrops) {
+        this.glowBackdrops.forEach(el => {
+          if (el) {
+            el.style.display = 'none';
+            el.innerHTML = '';
+          }
+        });
+      }
+      return;
+    }
     const backdropsExist = this.glowBackdrops[0] && this.glowBackdrops[1];
     if (!backdropsExist || !this.output) return;
 
@@ -699,8 +749,22 @@ export class Shell {
       }
     };
 
+    this._syncGlowBackdrop = performGlowSync;
+
     const observer = new MutationObserver(() => {
       if (document.hidden) return;
+      if (this.activePrintCount > 0) {
+        // Defer glow sync while stream is actively printing
+        if (!throttleTimeout) {
+          throttleTimeout = setTimeout(() => {
+            throttleTimeout = null;
+            if (this.activePrintCount === 0) {
+              performGlowSync();
+            }
+          }, 300);
+        }
+        return;
+      }
       if (!throttleTimeout) {
         // Use 500ms throttling if an active game/raw handler is running, 150ms otherwise
         const delay = (this.loginState === 'GAME' || this.getActiveInputHandler()) ? 500 : 150;
@@ -752,7 +816,22 @@ export class Shell {
   }
 
   _startAutoScroll() {
-    if (this.disableAutoScroll || typeof requestAnimationFrame === 'undefined' || !this.body) return;
+    if (this.disableAutoScroll || !this.body) return;
+
+    const clientHeight = this._cachedClientHeight || (this.body ? this.body.clientHeight : 0);
+    this._scrollTarget = Math.max(0, this.body.scrollHeight - clientHeight);
+
+    if (!this.enableSmoothScroll) {
+      if (!this._userScrolledUp) {
+        this._isProgrammaticScroll = true;
+        this.body.scrollTop = this._scrollTarget;
+        this._currentScrollTop = this._scrollTarget;
+        this._isProgrammaticScroll = false;
+      }
+      return;
+    }
+
+    if (typeof requestAnimationFrame === 'undefined') return;
 
     this._currentScrollTop = this.body.scrollTop;
     if (this._autoScrollRaf) return;
@@ -766,42 +845,51 @@ export class Shell {
         return;
       }
 
+      const target = this._scrollTarget !== undefined ? this._scrollTarget : Math.max(0, this.body.scrollHeight - (this._cachedClientHeight || this.body.clientHeight));
+      const current = this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop;
+
       if (!this._userScrolledUp) {
-        const target = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
-        const current = this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop;
-        if (target > current) {
+        if (this.activePrintCount > 0) {
+          // Direct bottom tracking during active line streaming avoids lagging behind text
+          this._currentScrollTop = target;
+          this._isProgrammaticScroll = true;
+          this.body.scrollTop = target;
+          this._isProgrammaticScroll = false;
+        } else if (target > current) {
           const diff = target - current;
-          if (diff <= 0.5) {
+          if (diff <= 1) {
             this._currentScrollTop = target;
+            this._isProgrammaticScroll = true;
             this.body.scrollTop = target;
+            this._isProgrammaticScroll = false;
           } else {
             const now = timestamp || (typeof performance !== 'undefined' ? performance.now() : Date.now());
             const dt = this._lastScrollTime ? Math.min((now - this._lastScrollTime) / 1000, 0.05) : 0.0166;
             this._lastScrollTime = now;
 
             const baseTau = this.scrollSmoothTau || 0.08;
-            const tRatio = Math.min(1, Math.max(0, (diff - 20) / 100));
-            const tau = Math.max(0.04, baseTau - tRatio * 0.035);
-            const blend = 1 - Math.exp(-dt / tau);
-
-            const step = Math.min(diff, Math.max(0.5, diff * blend));
+            const blend = 1 - Math.exp(-dt / baseTau);
+            const step = Math.min(diff, Math.max(1, diff * blend));
             this._currentScrollTop = Math.min(target, current + step);
+            this._isProgrammaticScroll = true;
             this.body.scrollTop = this._currentScrollTop;
+            this._isProgrammaticScroll = false;
           }
         } else if (current > target) {
           this._currentScrollTop = target;
         }
       }
 
-      const target = Math.max(0, this.body.scrollHeight - this.body.clientHeight);
       const remaining = target - (this._currentScrollTop !== undefined ? this._currentScrollTop : this.body.scrollTop);
 
-      if ((this.activePrintCount > 0 || remaining > 0.5) && !this._userScrolledUp && !this.disableAutoScroll) {
+      if ((this.activePrintCount > 0 || remaining > 1) && !this._userScrolledUp && !this.disableAutoScroll) {
         this._autoScrollRaf = requestAnimationFrame(easeScroll);
       } else {
-        if (remaining <= 0.5 && !this._userScrolledUp && !this.disableAutoScroll) {
+        if (remaining <= 1 && !this._userScrolledUp && !this.disableAutoScroll) {
           this._currentScrollTop = target;
+          this._isProgrammaticScroll = true;
           this.body.scrollTop = target;
+          this._isProgrammaticScroll = false;
         }
         this._autoScrollRaf = null;
         this._lastScrollTime = null;
@@ -858,6 +946,7 @@ export class Shell {
   }
 
   _delay(ms) {
+    if (ms <= 0 || this.skipLineAnimation) return Promise.resolve();
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
@@ -896,16 +985,18 @@ export class Shell {
     if (typeof HTMLElement !== 'undefined' && htmlContent instanceof HTMLElement) {
       return 1;
     }
-    if (typeof htmlContent === 'string' && htmlContent.includes('<div')) {
-      if (typeof document !== 'undefined') {
-        const tempWrapper = document.createElement('div');
-        tempWrapper.innerHTML = htmlContent;
-        if (tempWrapper.children.length === 1 && tempWrapper.firstElementChild.children.length > 1) {
-          return tempWrapper.firstElementChild.children.length;
-        }
+    const str = String(htmlContent);
+    if (!str.includes('\n') && !str.includes('<br') && !str.includes('</div')) {
+      return 1;
+    }
+    if (str.includes('<div') && typeof document !== 'undefined') {
+      const tempWrapper = document.createElement('div');
+      tempWrapper.innerHTML = str;
+      if (tempWrapper.children.length === 1 && tempWrapper.firstElementChild.children.length > 1) {
+        return tempWrapper.firstElementChild.children.length;
       }
     }
-    return splitHtmlLines(String(htmlContent)).length;
+    return splitHtmlLines(str).length;
   }
 
   getLineDelay(index = 0, total = 1) {
@@ -963,6 +1054,9 @@ export class Shell {
             this.queueTotalLines = 0;
             this.queueLineIndex = 0;
             this._cleanupSkipListeners();
+            if (this._syncGlowBackdrop) {
+              this._syncGlowBackdrop();
+            }
           }
         }
       }
@@ -986,6 +1080,13 @@ export class Shell {
   attachFadeIn(el) {
     if (!el || this.skipLineAnimation || (!this.enableLineFade && !this.enableLineBlur)) return;
     el.classList.add('terminal-line-fade-in');
+    const duration = Math.max(
+      this.enableLineFade ? (this.lineFadeDuration || 200) : 0,
+      this.enableLineBlur ? (this.lineBlurDuration || 200) : 0
+    );
+    setTimeout(() => {
+      el.classList.remove('terminal-line-fade-in');
+    }, duration + 20);
   }
 
   enterFullScreenView() {
@@ -1016,7 +1117,7 @@ export class Shell {
     }
     if (this.glowBackdrops) {
       this.glowBackdrops.forEach(el => {
-        if (el) el.style.display = '';
+        if (el) el.style.display = this.enableGlow ? '' : 'none';
       });
     }
     if (this.body) {
@@ -1074,6 +1175,16 @@ export class Shell {
         if (options.fade !== false && !options.instant && !this.skipLineAnimation) {
           this.attachFadeIn(child);
         }
+        if (!this._userScrolledUp && this.body) {
+          const clientH = this._cachedClientHeight || this.body.clientHeight;
+          this._scrollTarget = Math.max(0, this.body.scrollHeight - clientH);
+          if (!this.enableSmoothScroll) {
+            this._isProgrammaticScroll = true;
+            this.body.scrollTop = this._scrollTarget;
+            this._currentScrollTop = this._scrollTarget;
+            this._isProgrammaticScroll = false;
+          }
+        }
         const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
         const delay = this.getLineDelay(idx, total);
         if (!this.skipLineAnimation && delay > 0) {
@@ -1095,6 +1206,16 @@ export class Shell {
       lineEl.innerHTML = strContent || '&nbsp;';
       this.output.appendChild(lineEl);
       this._trimOutput();
+      if (!this._userScrolledUp && this.body) {
+        const clientH = this._cachedClientHeight || this.body.clientHeight;
+        this._scrollTarget = Math.max(0, this.body.scrollHeight - clientH);
+        if (!this.enableSmoothScroll) {
+          this._isProgrammaticScroll = true;
+          this.body.scrollTop = this._scrollTarget;
+          this._currentScrollTop = this._scrollTarget;
+          this._isProgrammaticScroll = false;
+        }
+      }
       const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
       const total = this.queueTotalLines || 1;
       const delay = this.getLineDelay(idx, total);
@@ -1118,6 +1239,16 @@ export class Shell {
       }
       lineEl.innerHTML = line || '&nbsp;';
       container.appendChild(lineEl);
+      if (!this._userScrolledUp && this.body) {
+        const clientH = this._cachedClientHeight || this.body.clientHeight;
+        this._scrollTarget = Math.max(0, this.body.scrollHeight - clientH);
+        if (!this.enableSmoothScroll) {
+          this._isProgrammaticScroll = true;
+          this.body.scrollTop = this._scrollTarget;
+          this._currentScrollTop = this._scrollTarget;
+          this._isProgrammaticScroll = false;
+        }
+      }
 
       const idx = this.queueLineIndex !== undefined ? this.queueLineIndex++ : 0;
       const delay = this.getLineDelay(idx, total);
@@ -1147,7 +1278,6 @@ export class Shell {
         this.inputLine.style.display = '';
         this.inputLine.style.visibility = 'visible';
         this.inputLine.classList.remove('terminal-line-fade-in');
-        void this.inputLine.offsetWidth;
         this.attachFadeIn(this.inputLine);
       }
       this.promptPrefix.innerHTML = promptText;
@@ -1199,7 +1329,6 @@ export class Shell {
         this.inputLine.style.display = '';
         this.inputLine.style.visibility = 'visible';
         this.inputLine.classList.remove('terminal-line-fade-in');
-        void this.inputLine.offsetWidth;
 
         if (!options.instant && !this.skipLineAnimation) {
           this.attachFadeIn(this.inputLine);

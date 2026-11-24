@@ -9,7 +9,7 @@ export const WEB_ROOT = 'var/www/chenghao.li';
 export const VFS_INDEX_PATH = 'var/www/chenghao.li/index.html';
 
 // 2. Terminal & Prompt UI
-export const SHOW_FPS_COUNTER = false;
+export const SHOW_FPS_COUNTER = true;
 export const PROMPT_SYMBOL = '$';
 export const LOCAL_BOOT_PROMPT = 'C:\\Users\\cli&gt;';
 export const BOOT_SSH_COMMAND = `ssh ${DEFAULT_USERNAME}@${HOSTNAME}`;
@@ -18,8 +18,10 @@ export const TYPEWRITER_DEFAULT_DELAY = 50;
 export const ENABLE_LINE_ANIMATION = true;
 export const ENABLE_LINE_FADE = true;
 export const ENABLE_LINE_BLUR = true;
+export const ENABLE_GLOW = false;
+export const ENABLE_SMOOTH_SCROLL = true;
 export const LINE_RENDER_DELAY = 16;
-export const LINE_RENDER_EASING = 'cubic-bezier(0.1, 0.1, 0, 1)';
+export const LINE_RENDER_EASING = 'cubic-bezier(0.5, 0.1, 0, 1)';
 export const LINE_FADE_DURATION = 200;
 export const LINE_BLUR_DURATION = 200;
 export const LINE_FADE_BLUR = 20;
