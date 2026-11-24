@@ -8,10 +8,11 @@ import {
   PROMPT_SYMBOL,
   MAX_TERMINAL_OUTPUT_LINES,
   TYPEWRITER_DEFAULT_DELAY,
+  ENABLE_LINE_ANIMATION,
+  ENABLE_LINE_FADE,
+  ENABLE_LINE_BLUR,
   LINE_RENDER_DELAY,
-  LINE_RENDER_DELAY_MIN,
-  LINE_RENDER_DELAY_MAX,
-  LINE_RENDER_ACCEL_EXPONENT,
+  LINE_RENDER_EASING,
   LINE_FADE_DURATION,
   LINE_BLUR_DURATION,
   LINE_FADE_BLUR,
@@ -86,6 +87,37 @@ export function splitHtmlLines(html) {
   });
 }
 
+export function solveCubicBezier(x1, y1, x2, y2) {
+  return function evaluate(x) {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let s = x;
+    for (let i = 0; i < 8; i++) {
+      const currentX = 3 * (1 - s) * (1 - s) * s * x1 + 3 * (1 - s) * s * s * x2 + s * s * s;
+      const dx = 3 * (1 - s) * (1 - s) * x1 + 6 * (1 - s) * s * (x2 - x1) + 3 * s * s * (1 - x2);
+      if (Math.abs(currentX - x) < 1e-5) break;
+      if (Math.abs(dx) < 1e-5) break;
+      s -= (currentX - x) / dx;
+      s = Math.max(0, Math.min(1, s));
+    }
+    return 3 * (1 - s) * (1 - s) * s * y1 + 3 * (1 - s) * s * s * y2 + s * s * s;
+  };
+}
+
+export function parseCubicBezier(easing) {
+  if (typeof easing === 'function') return easing;
+  if (Array.isArray(easing) && easing.length === 4) {
+    return solveCubicBezier(easing[0], easing[1], easing[2], easing[3]);
+  }
+  if (typeof easing === 'string') {
+    const match = easing.match(/cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)/i);
+    if (match) {
+      return solveCubicBezier(parseFloat(match[1]), parseFloat(match[2]), parseFloat(match[3]), parseFloat(match[4]));
+    }
+  }
+  return solveCubicBezier(0.1, 0.1, 0, 1);
+}
+
 export class Shell {
   constructor(options = {}) {
     this.redirectCapture = null;
@@ -126,9 +158,15 @@ export class Shell {
     this.typewriterDelay = options.typewriterDelay !== undefined ? options.typewriterDelay : (options.typeSpeed !== undefined ? options.typeSpeed : TYPEWRITER_DEFAULT_DELAY);
     this.maxOutputLines = options.maxOutputLines || Math.max(MAX_TERMINAL_OUTPUT_LINES || 150, 1000);
     this.lineRenderDelay = options.lineRenderDelay !== undefined ? options.lineRenderDelay : LINE_RENDER_DELAY;
-    this.lineRenderDelayMin = options.lineRenderDelayMin !== undefined ? options.lineRenderDelayMin : (typeof LINE_RENDER_DELAY_MIN !== 'undefined' ? LINE_RENDER_DELAY_MIN : 6);
-    this.lineRenderDelayMax = options.lineRenderDelayMax !== undefined ? options.lineRenderDelayMax : (typeof LINE_RENDER_DELAY_MAX !== 'undefined' ? LINE_RENDER_DELAY_MAX : 36);
-    this.lineRenderAccelExponent = options.lineRenderAccelExponent !== undefined ? options.lineRenderAccelExponent : (typeof LINE_RENDER_ACCEL_EXPONENT !== 'undefined' ? LINE_RENDER_ACCEL_EXPONENT : 1.2);
+    this.lineRenderEasing = options.lineRenderEasing || (typeof LINE_RENDER_EASING !== 'undefined' ? LINE_RENDER_EASING : 'cubic-bezier(0.1, 0.1, 0, 1)');
+    this._lineRenderEasingFn = parseCubicBezier(this.lineRenderEasing);
+    this.enableLineAnimation = options.enableLineAnimation !== undefined ? options.enableLineAnimation : (typeof ENABLE_LINE_ANIMATION !== 'undefined' ? ENABLE_LINE_ANIMATION : true);
+    this.enableLineFade = options.enableLineFade !== undefined ? options.enableLineFade : (typeof ENABLE_LINE_FADE !== 'undefined' ? ENABLE_LINE_FADE : true);
+    this.enableLineBlur = options.enableLineBlur !== undefined ? options.enableLineBlur : (typeof ENABLE_LINE_BLUR !== 'undefined' ? ENABLE_LINE_BLUR : true);
+    if (!this.enableLineAnimation) {
+      this.enableLineFade = false;
+      this.enableLineBlur = false;
+    }
     this.scrollSmoothFactor = options.scrollSmoothFactor !== undefined ? options.scrollSmoothFactor : (typeof SCROLL_SMOOTH_FACTOR !== 'undefined' ? SCROLL_SMOOTH_FACTOR : 0.12);
     this.scrollSmoothTau = options.scrollSmoothTau !== undefined ? options.scrollSmoothTau : (typeof SCROLL_SMOOTH_TAU !== 'undefined' ? SCROLL_SMOOTH_TAU : 0.08);
     this.lineFadeDuration = options.lineFadeDuration !== undefined ? options.lineFadeDuration : LINE_FADE_DURATION;
@@ -137,11 +175,12 @@ export class Shell {
     this.lineFadeEasing = options.lineFadeEasing !== undefined ? options.lineFadeEasing : (typeof LINE_FADE_EASING !== 'undefined' ? LINE_FADE_EASING : 'ease-out');
     this.lineBlurEasing = options.lineBlurEasing !== undefined ? options.lineBlurEasing : (typeof LINE_BLUR_EASING !== 'undefined' ? LINE_BLUR_EASING : 'ease-out');
     if (typeof document !== 'undefined' && document.documentElement) {
-      document.documentElement.style.setProperty('--line-fade-duration', `${this.lineFadeDuration}ms`);
-      document.documentElement.style.setProperty('--line-blur-duration', `${this.lineBlurDuration}ms`);
+      document.documentElement.style.setProperty('--line-fade-duration', this.enableLineFade ? `${this.lineFadeDuration}ms` : '0ms');
+      document.documentElement.style.setProperty('--line-blur-duration', this.enableLineBlur ? `${this.lineBlurDuration}ms` : '0ms');
       document.documentElement.style.setProperty('--line-fade-easing', this.lineFadeEasing);
       document.documentElement.style.setProperty('--line-blur-easing', this.lineBlurEasing);
-      const blurVal = typeof this.lineFadeBlur === 'number' ? `${this.lineFadeBlur}px` : this.lineFadeBlur;
+      const rawBlurVal = typeof this.lineFadeBlur === 'number' ? `${this.lineFadeBlur}px` : this.lineFadeBlur;
+      const blurVal = this.enableLineBlur ? rawBlurVal : '0px';
       document.documentElement.style.setProperty('--line-fade-blur', blurVal);
     }
     this.printQueue = Promise.resolve();
@@ -267,6 +306,43 @@ export class Shell {
     if (typeof document !== 'undefined' && document.documentElement) {
       document.documentElement.style.setProperty('--line-fade-easing', this.lineFadeEasing);
     }
+  }
+
+  setLineRenderDelay(delay) {
+    this.lineRenderDelay = delay;
+  }
+
+  setLineAnimation(enabled) {
+    this.enableLineAnimation = Boolean(enabled);
+    if (!this.enableLineAnimation) {
+      this.setLineFade(false);
+      this.setLineBlur(false);
+    } else {
+      this.setLineFade(true);
+      this.setLineBlur(true);
+    }
+  }
+
+  setLineFade(enabled) {
+    this.enableLineFade = Boolean(enabled);
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.setProperty('--line-fade-duration', this.enableLineFade ? `${this.lineFadeDuration}ms` : '0ms');
+    }
+  }
+
+  setLineBlur(enabled) {
+    this.enableLineBlur = Boolean(enabled);
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.setProperty('--line-blur-duration', this.enableLineBlur ? `${this.lineBlurDuration}ms` : '0ms');
+      const rawBlurVal = typeof this.lineFadeBlur === 'number' ? `${this.lineFadeBlur}px` : this.lineFadeBlur;
+      const blurVal = this.enableLineBlur ? rawBlurVal : '0px';
+      document.documentElement.style.setProperty('--line-fade-blur', blurVal);
+    }
+  }
+
+  setLineRenderEasing(easing) {
+    this.lineRenderEasing = easing;
+    this._lineRenderEasingFn = parseCubicBezier(easing);
   }
 
   setLineBlurEasing(easing) {
@@ -833,25 +909,24 @@ export class Shell {
   }
 
   getLineDelay(index = 0, total = 1) {
-    const minDelay = this.lineRenderDelayMin;
-    const maxDelay = this.lineRenderDelayMax;
-    if (total <= 1) {
-      return maxDelay;
+    if (!this.enableLineAnimation) {
+      return 0;
     }
-    if (minDelay >= maxDelay) {
-      return minDelay;
+    const baseDelay = this.lineRenderDelay;
+    if (total <= 1 || baseDelay <= 0) {
+      return baseDelay;
     }
 
     // Normalized progress across the queue: 0.0 at top, 1.0 at bottom
     const t = Math.max(0, Math.min(1, index / (total - 1)));
 
-    // Bell curve: sin(pi * t) goes from 0 at t=0, to 1 at t=0.5, to 0 at t=1
-    const speedFactor = Math.pow(Math.sin(Math.PI * t), this.lineRenderAccelExponent || 1.2);
+    // Ease-out speed factor (0.0 slow -> 1.0 fast)
+    const factor = this._lineRenderEasingFn ? this._lineRenderEasingFn(t) : t;
 
-    // Endpoints (speedFactor 0) -> maxDelay (slow)
-    // Midpoint (speedFactor 1) -> minDelay (fast)
-    const delay = maxDelay - (maxDelay - minDelay) * speedFactor;
-    return Math.round(delay);
+    // Starts deliberate (~3.0x baseDelay), swiftly eases to fast streaming (~0.35x baseDelay)
+    // Yields an overall average delay close to baseDelay for cubic-bezier(0.1, 0.1, 0, 1)
+    const delay = baseDelay * (3.0 - 2.65 * factor);
+    return Math.max(1, Math.round(delay));
   }
 
   print(htmlContent, className = 'color-text', options = {}) {
@@ -860,7 +935,7 @@ export class Shell {
       return null;
     }
 
-    if ((options.instant || this.skipLineAnimation) && this.activePrintCount === 0) {
+    if ((options.instant || this.skipLineAnimation || !this.enableLineAnimation) && this.activePrintCount === 0) {
       return this._printInstant(htmlContent, className);
     }
 
@@ -909,7 +984,7 @@ export class Shell {
   }
 
   attachFadeIn(el) {
-    if (!el || this.skipLineAnimation) return;
+    if (!el || this.skipLineAnimation || (!this.enableLineFade && !this.enableLineBlur)) return;
     el.classList.add('terminal-line-fade-in');
   }
 
@@ -968,7 +1043,7 @@ export class Shell {
       return htmlContent;
     }
 
-    if (options.instant || this.skipLineAnimation) {
+    if (options.instant || this.skipLineAnimation || !this.enableLineAnimation) {
       return this._printInstant(htmlContent, className);
     }
 
@@ -1108,26 +1183,44 @@ export class Shell {
     });
   }
 
-  showPromptLine() {
-    this.skipLineAnimation = false;
+  showPromptLine(options = {}) {
     if (this.loginState !== 'LOGGED_IN' || this.isBooting || this.getActiveInputHandler()) {
-      return;
+      return Promise.resolve();
     }
-    this.updatePrompt();
-    if (this.inputLine) {
-      this.inputLine.style.display = '';
-      this.inputLine.style.visibility = 'visible';
-      this.inputLine.classList.remove('terminal-line-fade-in');
-      void this.inputLine.offsetWidth;
-      this.attachFadeIn(this.inputLine);
-    }
-    if (this.input) {
-      this.input.disabled = false;
-    }
-    this.focus({ preventScroll: true });
-    if (!this.disableAutoScroll && !this._userScrolledUp) {
-      this._startAutoScroll();
-    }
+
+    const generation = this.printGeneration || 0;
+    const queued = this.printQueue.then(async () => {
+      if (generation !== (this.printGeneration || 0)) {
+        return;
+      }
+
+      this.updatePrompt();
+      if (this.inputLine) {
+        this.inputLine.style.display = '';
+        this.inputLine.style.visibility = 'visible';
+        this.inputLine.classList.remove('terminal-line-fade-in');
+        void this.inputLine.offsetWidth;
+
+        if (!options.instant && !this.skipLineAnimation) {
+          this.attachFadeIn(this.inputLine);
+          const delay = this.getLineDelay(this.queueLineIndex || 0, (this.queueTotalLines || 0) + 1);
+          if (delay > 0) {
+            await this._delay(delay);
+          }
+        }
+      }
+
+      if (this.input) {
+        this.input.disabled = false;
+      }
+      this.focus({ preventScroll: true });
+      if (!this.disableAutoScroll && !this._userScrolledUp) {
+        this._startAutoScroll();
+      }
+    });
+
+    this.printQueue = queued.catch(() => { });
+    return queued;
   }
 
   hidePromptLine() {
@@ -1260,7 +1353,7 @@ export class Shell {
       return 1;
     } finally {
       this.isExecutingCommand = false;
-      this.showPromptLine();
+      await this.showPromptLine();
       this.abortSignal = false;
     }
   }
@@ -1984,7 +2077,7 @@ export class Shell {
       this._userScrolledUp = true;
     }
 
-    this.showPromptLine();
+    await this.showPromptLine();
     this.updateBrowserUrl(this.formatDisplayPath(), initialCommand);
   }
 }
