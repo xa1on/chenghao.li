@@ -9,7 +9,7 @@ export const WEB_ROOT = 'var/www/chenghao.li';
 export const VFS_INDEX_PATH = 'var/www/chenghao.li/index.html';
 
 // 2. Terminal & Prompt UI
-export const SHOW_FPS_COUNTER = true;
+export const SHOW_FPS_COUNTER = false;
 export const PROMPT_SYMBOL = '$';
 export const LOCAL_BOOT_PROMPT = 'C:\\Users\\cli&gt;';
 export const BOOT_SSH_COMMAND = `ssh ${DEFAULT_USERNAME}@${HOSTNAME}`;
