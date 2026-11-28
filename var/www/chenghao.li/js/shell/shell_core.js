@@ -966,9 +966,14 @@ export class Shell {
   }
 
   _printInstant(htmlContent, className) {
-    const line = document.createElement('div');
-    line.className = className;
-    line.innerHTML = htmlContent;
+    let line;
+    if (typeof HTMLElement !== 'undefined' && htmlContent instanceof HTMLElement) {
+      line = htmlContent;
+    } else {
+      line = document.createElement('div');
+      line.className = className;
+      line.innerHTML = htmlContent;
+    }
     this.output.appendChild(line);
     this._trimOutput();
     if (this.queueLineIndex !== undefined) {
